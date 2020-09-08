@@ -145,7 +145,7 @@ class MetalearningHead(nn.Module):
 
         else:
             try:              cls_outputs = self.classifier(bn_feat)
-            except TypeError: cls_outputs = self.classifier(bn_feat, targets) # for ArcSoftmax & CircleSoftmax
+            except TypeError: cls_outputs = self.classifier(bn_feat, targets['IDs']) # for ArcSoftmax & CircleSoftmax
             pred_class_logits = F.linear(bn_feat, self.classifier.weight)
 
         if self.neck_feat == "before":  feat = global_feat[..., 0, 0] # this feature is triplet feature

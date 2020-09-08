@@ -5,19 +5,20 @@ INPUT:
   DO_AUTOAUG: False
 
 
-META: 
+META:
   BOTTLENECK:
-    DO_IT: True
+    DO_IT: False #
     REDUCTION_DIM: 1024 
     NORM: True 
   DATA:
-    NAMES: "VeRi_keypoint_each_4"
+    NAMES: "" #
     NUM_VIEW: 4 
   REGULARIZER:
-    LR_FACTOR: 10.0 
+    LR_FACTOR: 10.0
+    DO_IT: False # No reg
   MODEL:
     LR_FACTOR: 1.0 
-    SPLIT_LAYER: ("bottleneck","classifier",) 
+    SPLIT_LAYER: ('',) # No Meta
   SOLVER:
     INIT: 
       NUM_EPOCH: 0 
@@ -75,6 +76,7 @@ MODEL:
     NAME: ("CrossEntropyLoss", "TripletLoss",)
 
 DATASETS:
+#  NAMES: ("VeRi_keypoint",)
   NAMES: ("Market1501",)
   TESTS: ("Market1501",)
 

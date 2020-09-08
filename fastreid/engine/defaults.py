@@ -209,6 +209,7 @@ class DefaultTrainer(SimpleTrainer):
 
         meta_learning_parameter = {}
         cfg.defrost()
+        # about meta weight loader
         if cfg.META.SOLVER.FINAL.WEIGHT_LOADER is not None:
             cfg.META.SOLVER.INIT.NUM_EPOCH = 0
             cfg.META.SOLVER.FINAL.NUM_EPOCH = 0
@@ -222,11 +223,18 @@ class DefaultTrainer(SimpleTrainer):
             logger.info('***** meta-learning paramter does not exist *****')
             meta_learning_parameter['load_parameter'] = False
 
+        # about meta-learing and original learning
         if cfg.META.SOLVER.INIT.NUM_EPOCH + cfg.META.SOLVER.FINAL.NUM_EPOCH > 0:
             meta_learning_parameter['meta_learning'] = True
         else:
             meta_learning_parameter['meta_learning'] = False
+        if cfg.META.SOLVER.NO_TRAIN_ORIGINAL:
+            meta_learning_parameter['ori_iter'] = False
+        else:
+            meta_learning_parameter['ori_iter'] = True
 
+
+        # If meta learning
         if meta_learning_parameter['meta_learning']: # meta_learning on
             old_pretrained = cfg.MODEL.BACKBONE.PRETRAIN
             if 'scratch' in cfg.META.SOLVER.FINAL.INITIALIZE_CONV_STATE_META:
@@ -247,6 +255,63 @@ class DefaultTrainer(SimpleTrainer):
             cfg.MODEL.BACKBONE.PRETRAIN = old_pretrained
             meta_learning_parameter['optimizer_init'] = self.build_optimizer(cfg, model_meta)
             meta_learning_parameter['optimizer_final'] = self.build_optimizer(cfg, model_meta)
+
+            num_dataset = [len(x.dataset) for x in data_loader_add['init']]
+            num_view = len(num_dataset)
+            num_iter = cfg.META.SOLVER.INIT.NUM_EPOCH * max(num_dataset) // cfg.META.DATA.IMS_PER_BATCH
+            meta_learning_parameter['iter_local'] = int(num_iter)
+            if cfg.META.SOLVER.MTEST.ONLY_ONE_DOMAIN:
+                meta_learning_parameter['num_mtest'] = 1
+            else:
+                meta_learning_parameter['num_mtest'] = num_view - cfg.META.SOLVER.MTRAIN.NUM_DOMAIN
+
+            num_dataset = [len(x.dataset) for x in data_loader_add['mtest']]
+            num_iter = cfg.META.SOLVER.FINAL.NUM_EPOCH * max(num_dataset)
+            num_iter *= (num_view / meta_learning_parameter['num_mtest'] / cfg.META.SOLVER.INIT.OUTER_LOOP)
+            num_iter //= cfg.META.SOLVER.MTEST.IMS_PER_BATCH
+            meta_learning_parameter['iteration_all'] = int(
+                num_iter)  # cfg.META.SOLVER.FINAL.NUM_EPOCH, META.SOLVER.MTEST.NUM_DOMAIN, dataloader_mtest
+
+            meta_learning_parameter['loss_combined'] = cfg.META.LOSS.COMBINED
+            meta_learning_parameter['iter_init_inner'] = cfg.META.SOLVER.INIT.INNER_LOOP
+            meta_learning_parameter['iter_init_outer'] = cfg.META.SOLVER.INIT.OUTER_LOOP
+            meta_learning_parameter['iter_mtrain'] = cfg.META.SOLVER.MTRAIN.INNER_LOOP
+            meta_learning_parameter['num_mtrain'] = cfg.META.SOLVER.MTRAIN.NUM_DOMAIN
+            meta_learning_parameter['inner_loop_type'] = cfg.META.SOLVER.MTRAIN.INNER_LOOP_TYPE
+            meta_learning_parameter['write_period'] = cfg.META.SOLVER.WRITE_PERIOD
+            meta_learning_parameter['write_period_param'] = cfg.META.SOLVER.WRITE_PERIOD_PARAM
+            meta_learning_parameter['save_meta_param'] = cfg.META.SOLVER.FINAL.SAVE_META_PARAM
+            meta_learning_parameter['initialize_conv'] = cfg.META.SOLVER.FINAL.INITIALIZE_CONV
+            meta_learning_parameter['initialize_fc'] = cfg.META.SOLVER.FINAL.INITIALIZE_FC
+            meta_learning_parameter['dataloader_init'] = data_loader_add['init']  # need two dataloaders
+            meta_learning_parameter['dataloader_mtrain'] = data_loader_add['mtrain']  # new batch, ~~
+            meta_learning_parameter['dataloader_mtest'] = data_loader_add['mtest']  # new batch, ~~
+            meta_learning_parameter['loss_name_init'] = cfg.META.LOSS.INIT_NAME
+            meta_learning_parameter['loss_name_mtrain'] = cfg.META.LOSS.MTRAIN_NAME
+            meta_learning_parameter['loss_name_mtest'] = cfg.META.LOSS.MTEST_NAME
+            meta_learning_parameter['detail_mode'] = cfg.META.SOLVER.FINAL.DETAIL_MODE
+            meta_learning_parameter['output_dir'] = cfg.OUTPUT_DIR
+            meta_learning_parameter['sync'] = cfg.META.SOLVER.SYNC
+
+            # Meta-learning optimizer
+            if not meta_learning_parameter['optimizer_final'] == None:
+                if cfg.META.SOLVER.FINAL.SCHED == 'constant':
+                    meta_learning_parameter['scheduler_final'] = \
+                        optim.lr_scheduler.StepLR(meta_learning_parameter['optimizer_final'], step_size=100000, gamma=1)
+                elif cfg.META.SOLVER.FINAL.SCHED == 'MultiStepLR':
+                    meta_learning_parameter['scheduler_final'] = \
+                        optim.lr_scheduler.MultiStepLR(meta_learning_parameter['optimizer_final'],
+                                                       milestones=[x * int(num_iter) for x in
+                                                                   cfg.META.SOLVER.FINAL.STEPS],
+                                                       gamma=cfg.META.SOLVER.FINAL.GAMMA)
+                else:
+                    print('error in scheduler_final')
+            if not meta_learning_parameter['optimizer_init'] == None:
+                if cfg.META.SOLVER.INIT.SCHED == 'constant':
+                    meta_learning_parameter['scheduler_init'] = \
+                        optim.lr_scheduler.StepLR(meta_learning_parameter['optimizer_init'], step_size=100000, gamma=1)
+                else:
+                    print('error in scheduler_init')
         else:
             model = self.build_model(cfg)
             meta_learning_parameter['optimizer_init'] = None
@@ -262,79 +327,6 @@ class DefaultTrainer(SimpleTrainer):
             model = DistributedDataParallel(
                 model, device_ids=[comm.get_local_rank()], broadcast_buffers=False
             )
-
-        meta_learning_parameter['loss_combined'] = cfg.META.LOSS.COMBINED
-
-        num_dataset = [len(x.dataset) for x in data_loader_add['init']]
-        num_view = len(num_dataset)
-        num_iter = cfg.META.SOLVER.INIT.NUM_EPOCH * max(num_dataset) // cfg.META.DATA.IMS_PER_BATCH
-        meta_learning_parameter['iter_local'] = int(num_iter)
-        if cfg.META.SOLVER.MTEST.ONLY_ONE_DOMAIN:
-            meta_learning_parameter['num_mtest'] = 1
-        else:
-            meta_learning_parameter['num_mtest'] = num_view - cfg.META.SOLVER.MTRAIN.NUM_DOMAIN
-
-
-        num_dataset = [len(x.dataset) for x in data_loader_add['mtest']]
-        num_iter = cfg.META.SOLVER.FINAL.NUM_EPOCH * max(num_dataset)
-        num_iter *= (num_view / meta_learning_parameter['num_mtest'] / cfg.META.SOLVER.INIT.OUTER_LOOP)
-        num_iter //= cfg.META.SOLVER.MTEST.IMS_PER_BATCH
-        meta_learning_parameter['iteration_all'] = int(num_iter) # cfg.META.SOLVER.FINAL.NUM_EPOCH, META.SOLVER.MTEST.NUM_DOMAIN, dataloader_mtest
-
-        meta_learning_parameter['iter_init_inner'] = cfg.META.SOLVER.INIT.INNER_LOOP
-        meta_learning_parameter['iter_init_outer'] = cfg.META.SOLVER.INIT.OUTER_LOOP
-        meta_learning_parameter['iter_mtrain'] = cfg.META.SOLVER.MTRAIN.INNER_LOOP
-        meta_learning_parameter['num_mtrain'] = cfg.META.SOLVER.MTRAIN.NUM_DOMAIN
-        meta_learning_parameter['inner_loop_type'] = cfg.META.SOLVER.MTRAIN.INNER_LOOP_TYPE
-        meta_learning_parameter['write_period'] = cfg.META.SOLVER.WRITE_PERIOD
-        meta_learning_parameter['write_period_param'] = cfg.META.SOLVER.WRITE_PERIOD_PARAM
-        meta_learning_parameter['save_meta_param'] = cfg.META.SOLVER.FINAL.SAVE_META_PARAM
-
-        meta_learning_parameter['initialize_conv'] = cfg.META.SOLVER.FINAL.INITIALIZE_CONV
-        meta_learning_parameter['initialize_fc'] = cfg.META.SOLVER.FINAL.INITIALIZE_FC
-
-        meta_learning_parameter['dataloader_init'] = data_loader_add['init'] # need two dataloaders
-        meta_learning_parameter['dataloader_mtrain'] = data_loader_add['mtrain'] # new batch, ~~
-        meta_learning_parameter['dataloader_mtest'] = data_loader_add['mtest'] # new batch, ~~
-
-        meta_learning_parameter['loss_name_init'] = cfg.META.LOSS.INIT_NAME
-        meta_learning_parameter['loss_name_mtrain'] = cfg.META.LOSS.MTRAIN_NAME
-        meta_learning_parameter['loss_name_mtest'] = cfg.META.LOSS.MTEST_NAME
-
-        meta_learning_parameter['detail_mode'] = cfg.META.SOLVER.FINAL.DETAIL_MODE
-        meta_learning_parameter['output_dir'] = cfg.OUTPUT_DIR
-        meta_learning_parameter['sync'] = cfg.META.SOLVER.SYNC
-
-
-        if cfg.META.SOLVER.NO_TRAIN_ORIGINAL:
-            meta_learning_parameter['ori_iter'] = False
-        else:
-            meta_learning_parameter['ori_iter'] = True
-
-        if not meta_learning_parameter['optimizer_final'] == None:
-            if cfg.META.SOLVER.FINAL.SCHED == 'constant':
-                meta_learning_parameter['scheduler_final'] = \
-                    optim.lr_scheduler.StepLR(meta_learning_parameter['optimizer_final'], step_size=100000, gamma=1)
-            elif cfg.META.SOLVER.FINAL.SCHED == 'MultiStepLR':
-                meta_learning_parameter['scheduler_final'] = \
-                    optim.lr_scheduler.MultiStepLR(meta_learning_parameter['optimizer_final'],
-                                                   milestones=[x * int(num_iter) for x in cfg.META.SOLVER.FINAL.STEPS],
-                                                   gamma=cfg.META.SOLVER.FINAL.GAMMA)
-            else:
-                print('error in scheduler_final')
-
-        if not meta_learning_parameter['optimizer_init'] == None:
-            if cfg.META.SOLVER.INIT.SCHED == 'constant':
-                meta_learning_parameter['scheduler_init'] = \
-                    optim.lr_scheduler.StepLR(meta_learning_parameter['optimizer_init'], step_size=100000, gamma=1)
-            else:
-                print('error in scheduler_init')
-
-
-        # optimizer -> cfg_local -> change parameter ratio
-        # scheduler -> different setting -> multiLR, warmupmultiLR, basic stepLR
-        # old scheduler ->
-
 
         super().__init__(cfg, model, model_meta, data_loader, optimizer, meta_learning_parameter)
 
@@ -355,7 +347,6 @@ class DefaultTrainer(SimpleTrainer):
         else:
             self.max_iter = cfg.SOLVER.MAX_ITER
         self.cfg = cfg
-
         self.register_hooks(self.build_hooks())
 
     def resume_or_load(self, resume=True):

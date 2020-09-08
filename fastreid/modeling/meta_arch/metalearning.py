@@ -20,6 +20,11 @@ class Metalearning(nn.Module):
     def __init__(self, cfg):
         super().__init__()
         self._cfg = cfg
+        if cfg.META.DATA.NAMES == "":
+            self.other_dataset = False
+        else:
+            self.other_dataset = True
+
         assert len(cfg.MODEL.PIXEL_MEAN) == len(cfg.MODEL.PIXEL_STD)
         self.register_buffer("pixel_mean", torch.tensor(cfg.MODEL.PIXEL_MEAN).view(1, -1, 1, 1))
         self.register_buffer("pixel_std", torch.tensor(cfg.MODEL.PIXEL_STD).view(1, -1, 1, 1))
@@ -54,21 +59,21 @@ class Metalearning(nn.Module):
 
         if self.training:
             assert "targets" in batched_inputs, "Person ID annotation are missing in training!"
-            targets = batched_inputs["targets"].long().to(self.device)
-
-
-            assert "others" in batched_inputs, "View ID annotation are missing in training!"
-            assert "dir" in batched_inputs['others'], "View ID annotation are missing in training!"
-            views = batched_inputs['others']['dir'].long().to(self.device)
+            targets = dict()
+            targets['IDs'] = batched_inputs["targets"].long().to(self.device)
+            if self.other_dataset:
+                assert "others" in batched_inputs, "View ID annotation are missing in training!"
+                assert "dir" in batched_inputs['others'], "View ID annotation are missing in training!"
+                targets['views'] = batched_inputs['others']['dir'].long().to(self.device)
 
             # PreciseBN flag, When do preciseBN on different dataset, the number of classes in new dataset
             # may be larger than that in the original dataset, so the circle/arcface will
             # throw an error. We just set all the targets to 0 to avoid this problem.
-            if targets.sum() < 0: targets.zero_()
+            if targets['IDs'].sum() < 0: targets['IDs'].zero_()
 
             outputs = self.heads(features, targets, opt)
 
-            return outputs, targets, views
+            return outputs, targets
         else:
             outputs = self.heads(features)
 
@@ -90,14 +95,13 @@ class Metalearning(nn.Module):
         """
 
         loss_dict = {}
+        gt_labels = targets['IDs']
         if self._cfg['META']['GRL']['DO_IT']:
-            gt_labels = targets['IDs']
             gt_domains = targets['views']
             cls_outputs, pred_class_logits, pred_features, dom_outputs = outputs
             loss_dict['loss_dom'] = self._cfg['META']['GRL']['WEIGHT'] * CrossEntropyLoss(self._cfg)(dom_outputs, gt_domains) # CE same (0.1 eps, weight 1)
         else:
             cls_outputs, pred_class_logits, pred_features = outputs
-            gt_labels = targets
 
         loss_names = opt['loss']
 

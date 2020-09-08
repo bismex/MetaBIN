@@ -105,4 +105,3 @@ TEST:
   EVAL_PERIOD: 10
   IMS_PER_BATCH: 128
 
-OUTPUT_DIR: "logs/veri/bagtricks_R50-ibn"

@@ -52,7 +52,6 @@ DG-person
   - `cd DG-person`
   - `bash symbolic_link_dataset.sh`
   
-  
 - Direct connect (not recommended)
   - If you don't want to make symbolic link, move each dataset folder into `./datasets/`
   - Check the name of dataset folders
@@ -74,3 +73,34 @@ DG-person
 - Direct connect (not recommended)
   - Make 'pretrained' and 'logs' folder in `DG-person`
   - Move the pretrained models on `DG-person(pretrained)`
+  
+  
+## 6) Train
+
+- If you run code in pycharm
+  - tools/train_net.py -> Edit congifuration
+  - Working directory: `your folders/DG-person/`
+  - Parameters: `--config-file ./configs/Sample/v00_person.yml`
+
+- Single GPU
+
+`python3 ./tools/train_net.py --config-file ./configs/Sample/v00_person.yml`
+
+
+- Single GPU (specific GPU)
+
+`python3 ./tools/train_net.py --config-file ./configs/Sample/v00_person.yml MODEL.DEVICE "cuda:0"`
+
+
+- Multiple GPUs
+
+`python3 ./tools/train_net.py --config-file ./configs/Sample/v00_person.yml --num-gpus 2`
+
+- Resume (model weights is automatically loaded based on `last_checkpoint` file in logs)
+
+`python3 ./tools/train_net.py --config-file ./configs/Sample/v00_person.yml --resume`
+
+- Evaluation only
+
+`python3 ./tools/train_net.py --config-file ./configs/Sample/v00_person.yml --eval-only`
+

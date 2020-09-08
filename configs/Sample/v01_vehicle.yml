@@ -45,7 +45,7 @@ META:  ############################################
       WEIGHT_LOADER: None # [''.pth] or None
       WEIGHT_FOLDER: None # [./log/~~] or None
       SAVE_META_PARAM: True 
-    WRITE_PERIOD: 20
+    WRITE_PERIOD: 5
     NO_TRAIN_ORIGINAL: False # True is no train!!
     SYNC: True 
   LOSS:
@@ -105,4 +105,3 @@ TEST:
   EVAL_PERIOD: 10
   IMS_PER_BATCH: 128
 
-OUTPUT_DIR: "logs/veri/bagtricks_R50-ibn"

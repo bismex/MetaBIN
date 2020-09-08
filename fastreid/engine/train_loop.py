@@ -90,10 +90,8 @@ class TrainerBase:
         max_iter(int): The iteration to end training.
         storage(EventStorage): An EventStorage that's opened during the course of training.
     """
-
     def __init__(self):
         self._hooks = []
-
     def register_hooks(self, hooks):
         """
         Register hooks to the trainer. The hooks are executed in the order
@@ -110,7 +108,6 @@ class TrainerBase:
             # See http://engineering.hearsaysocial.com/2013/06/16/circular-references-in-python/
             h.trainer = weakref.proxy(self)
         self._hooks.extend(hooks)
-
     def train(self, start_iter: int, max_iter: int):
         """
         Args:
@@ -130,7 +127,6 @@ class TrainerBase:
                 self.load_meta_param()
             if self.meta_learning_parameter['meta_learning'] or self.meta_learning_parameter['load_parameter']:
                 self.update_meta_param()
-
             if self.meta_learning_parameter['ori_iter']:
                 self.before_train() # check hooks.py, engine/defaults.py
                 for self.iter in range(start_iter, max_iter):
@@ -141,29 +137,22 @@ class TrainerBase:
         #     logger.exception("Exception during training:")
         # finally:
                 self.after_train()
-
     def before_train(self):
         for h in self._hooks:
             h.before_train()
-
     def after_train(self):
         for h in self._hooks:
             h.after_train()
-
     def before_step(self):
         for h in self._hooks:
             h.before_step()
-
     def after_step(self):
         for h in self._hooks:
             h.after_step()
         # this guarantees, that in each hook's after_step, storage.iter == trainer.iter
         self.storage.step()
-
     def run_step(self):
         raise NotImplementedError
-
-
 
 class SimpleTrainer(TrainerBase):
     """
@@ -205,25 +194,139 @@ class SimpleTrainer(TrainerBase):
             self.scaler = torch.cuda.amp.GradScaler()
         else:
             self.scaler = None
+    def run_step(self):
+        """
+        Implement the standard training logic described above.
+        """
+        assert self.model.training, "[SimpleTrainer] model was changed to eval mode!"
+        start = time.perf_counter()
+        """
+        If your want to do something with the data, you can wrap the dataloader.
+        """
+        data = next(self._data_loader_iter)
+        data_time = time.perf_counter() - start
+
+        """
+        If your want to do something with the heads, you can wrap the model.
+        """
+        opt = {}
+        opt['ds_flag'] = False
+        opt['param_update'] = False
+        opt['original_learning'] = True
+        opt['loss'] = self.cfg['MODEL']['LOSSES']['NAME']
+
+        bin_gates = [p for p in self.model.parameters() if getattr(p, 'bin_gate', False)]
+
+        for name, param in self.model.named_parameters():
+            param.grad = None
+            if 'reg' in name:
+                param.requires_grad = False
+                # print('new_changed: {}'.format(torch.sum(self.model.state_dict()[name])))
+
+        if self.cfg['META']['GRL']['DO_IT']:
+            p = float(max(0, self.iter - self.cfg['SOLVER']['WARMUP_ITERS']) / (self.cfg['SOLVER']['MAX_ITER']-self.cfg['SOLVER']['WARMUP_ITERS']))
+            constant = 2. / (1. + np.exp(-self.cfg['META']['GRL']['GAMMA'] * p)) - 1
+            opt['GRL_constant'] = constant
+
+        if self.scaler is None:
+            if isinstance(self.model, DistributedDataParallel):
+                outputs, targets = self.model.module(data, opt)
+            else:
+                outputs, targets = self.model(data, opt)
+        else:
+            with torch.cuda.amp.autocast():
+                if isinstance(self.model, DistributedDataParallel):
+                    outputs, targets = self.model.module(data, opt)
+                else:
+                    outputs, targets = self.model(data, opt)
+
+        if self.scaler is None:
+            if isinstance(self.model, DistributedDataParallel):
+                loss_dict = self.model.module.losses(outputs, targets, opt)
+            else:
+                loss_dict = self.model.losses(outputs, targets, opt)
+            losses = sum(loss_dict.values())
+        else:
+            with torch.cuda.amp.autocast():
+                if isinstance(self.model, DistributedDataParallel):
+                    loss_dict = self.model.module.losses(outputs, targets, opt)
+                else:
+                    loss_dict = self.model.losses(outputs, targets, opt)
+                losses = sum(loss_dict.values())
+
+        self._detect_anomaly(losses, loss_dict)
+
+        metrics_dict = loss_dict
+        metrics_dict["data_time"] = data_time
+        self._write_metrics(metrics_dict)
+
+        """
+        If you need accumulate gradients or something similar, you can
+        wrap the optimizer with your custom `zero_grad()` method.
+        """
+        self.optimizer.zero_grad()
+
+        if self.scaler is None:
+            losses.backward()
+            self.optimizer.step()
+        else:
+            self.scaler.scale(losses).backward()
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+
+        for p in bin_gates:
+            p.data.clamp_(min=0, max=1)
+            # print(p)
+
+        if self.iter % (self.cfg.SOLVER.WRITE_PERIOD_PARAM * self.cfg.SOLVER.WRITE_PERIOD) == 0:
+            with torch.no_grad():
+                write_dict = dict()
+                round_num = 4
+                name_num = 20
+                for name, param in self.model.named_parameters():  # only update regularizer
+                    if 'reg' in name:
+                        name = '_'.join([x[:name_num] for x in name.split('.')[1:]])
+                        name = name + '+'
+                        write_dict[name] = round(float(torch.sum(param.data.view(-1) > 0)) / len(param.data.view(-1)),
+                                                 round_num)
+
+                for name, param in self.model.named_parameters():
+                    if ('meta' in name) and ('fc' in name) and ('weight' in name) and (not 'view' in name):
+                        name = '_'.join([x[:name_num] for x in name.split('.')[1:]])
+                        # name_std = name + '_std'
+                        # write_dict[name_std] = round(float(torch.std(param.data.view(-1))), round_num)
+                        # name_mean = name + '_mean'
+                        # write_dict[name_mean] = round(float(torch.mean(param.data.view(-1))), round_num)
+                        name_std10 = name + '_std10'
+                        ratio = 0.1
+                        write_dict[name_std10] = round(
+                            float(torch.sum((param.data.view(-1) > - ratio * float(torch.std(param.data.view(-1)))) * (
+                                    param.data.view(-1) < ratio * float(torch.std(param.data.view(-1)))))) / len(
+                                param.data.view(-1)), round_num)
+
+                for name, param in self.model.named_parameters():
+                    if ('gate' in name) and (not 'view' in name):
+                        name = '_'.join([x[:name_num] for x in name.split('.')[1:]])
+                        name_mean = name + '_mean'
+                        write_dict[name_mean] = round(float(torch.mean(param.data.view(-1))), round_num)
+                logger.info(write_dict)
 
     def basic_forward(self, opt, data):
 
         model = self.model_meta.module if isinstance(self.model_meta, DistributedDataParallel) else self.model_meta
 
         if self.scaler is None:
-            outputs, targets, views = model(data, opt)
+            outputs, targets = model(data, opt)
             loss_dict = model.losses(outputs, targets, opt)
             losses = sum(loss_dict.values())
         else:
             with torch.cuda.amp.autocast():
-                outputs, targets, views = model(data, opt)
+                outputs, targets = model(data, opt)
                 loss_dict = model.losses(outputs, targets, opt)
                 losses = sum(loss_dict.values())
 
         self._detect_anomaly(losses, loss_dict)
         return losses, loss_dict
-
-
     def find_selected_optimizer(self, find_group, optimizer):
 
         # find parameter, lr, required_grad, shape
@@ -244,7 +347,6 @@ class SimpleTrainer(TrainerBase):
             else:
                 logger.info('error in find_group')
         return idx_group, dict_group
-
     def print_selected_optimizer(self, txt, idx_group, optimizer, detail_mode):
 
         if detail_mode:
@@ -273,15 +375,12 @@ class SimpleTrainer(TrainerBase):
 
                 else:
                     logger.info('[**{}**] --> [{}], w:{}, grad:{}, lr:{}'.format(txt, t_name, round(float(t_param), num_float), t_grad, t_lr))
-
-
     def load_meta_param(self):
         logger.info("******* Load meta paramter *******")
         data = torch.load(self.meta_learning_parameter['load_parameter_dir'])
         self.model_meta = data['model']
         # self.model_meta.load_state_dict(data['model'])
         logger.info("**********************************")
-
     def update_meta_param(self):
 
         logger.info("******* Update meta paramter *******")
@@ -325,8 +424,6 @@ class SimpleTrainer(TrainerBase):
 
 
         logger.info("************************************")
-
-
     def meta_learning(self):
 
         # 1. Initial parameter setting (shared layer + domain specific layers)
@@ -692,135 +789,6 @@ class SimpleTrainer(TrainerBase):
         for name, param in self.model_meta.named_parameters():
             param.grad = None
             param.requires_grad = initial_requires_grad[name]
-
-
-    def run_step(self):
-        """
-        Implement the standard training logic described above.
-        """
-        assert self.model.training, "[SimpleTrainer] model was changed to eval mode!"
-        start = time.perf_counter()
-        """
-        If your want to do something with the data, you can wrap the dataloader.
-        """
-        data = next(self._data_loader_iter)
-        data_time = time.perf_counter() - start
-
-        """
-        If your want to do something with the heads, you can wrap the model.
-        """
-        opt = {}
-        opt['ds_flag'] = False
-        opt['param_update'] = False
-        opt['original_learning'] = True
-        opt['loss'] = self.cfg['MODEL']['LOSSES']['NAME']
-
-        bin_gates = [p for p in self.model.parameters() if getattr(p, 'bin_gate', False)]
-
-        for name, param in self.model.named_parameters():
-            param.grad = None
-            if 'reg' in name:
-                param.requires_grad = False
-                # print('new_changed: {}'.format(torch.sum(self.model.state_dict()[name])))
-
-        if self.cfg['META']['GRL']['DO_IT']:
-            p = float(max(0, self.iter - self.cfg['SOLVER']['WARMUP_ITERS']) / (self.cfg['SOLVER']['MAX_ITER']-self.cfg['SOLVER']['WARMUP_ITERS']))
-            constant = 2. / (1. + np.exp(-self.cfg['META']['GRL']['GAMMA'] * p)) - 1
-            opt['GRL_constant'] = constant
-
-        if self.scaler is None:
-            if isinstance(self.model, DistributedDataParallel):
-                outputs, targets, views = self.model.module(data, opt)
-            else:
-                outputs, targets, views = self.model(data, opt)
-        else:
-            with torch.cuda.amp.autocast():
-                if isinstance(self.model, DistributedDataParallel):
-                    outputs, targets, views = self.model.module(data, opt)
-                else:
-                    outputs, targets, views = self.model(data, opt)
-
-
-        if self.cfg['META']['GRL']['DO_IT']:
-            targets_ID = targets
-            targets = {}
-            targets['IDs'] = targets_ID
-            targets['views'] = views
-
-        # Compute loss
-
-        if self.scaler is None:
-            if isinstance(self.model, DistributedDataParallel):
-                loss_dict = self.model.module.losses(outputs, targets, opt)
-            else:
-                loss_dict = self.model.losses(outputs, targets, opt)
-            losses = sum(loss_dict.values())
-        else:
-            with torch.cuda.amp.autocast():
-                if isinstance(self.model, DistributedDataParallel):
-                    loss_dict = self.model.module.losses(outputs, targets, opt)
-                else:
-                    loss_dict = self.model.losses(outputs, targets, opt)
-                losses = sum(loss_dict.values())
-
-
-        self._detect_anomaly(losses, loss_dict)
-
-        metrics_dict = loss_dict
-        metrics_dict["data_time"] = data_time
-        self._write_metrics(metrics_dict)
-
-        """
-        If you need accumulate gradients or something similar, you can
-        wrap the optimizer with your custom `zero_grad()` method.
-        """
-        self.optimizer.zero_grad()
-
-        if self.scaler is None:
-            losses.backward()
-            self.optimizer.step()
-        else:
-            self.scaler.scale(losses).backward()
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
-
-        for p in bin_gates:
-            p.data.clamp_(min=0, max=1)
-            # print(p)
-
-        if self.iter % (self.cfg.SOLVER.WRITE_PERIOD_PARAM * self.cfg.SOLVER.WRITE_PERIOD) == 0:
-            with torch.no_grad():
-                write_dict = dict()
-                round_num = 4
-                name_num = 20
-                for name, param in self.model.named_parameters():  # only update regularizer
-                    if 'reg' in name:
-                        name = '_'.join([x[:name_num] for x in name.split('.')[1:]])
-                        name = name + '+'
-                        write_dict[name] = round(float(torch.sum(param.data.view(-1) > 0)) / len(param.data.view(-1)),
-                                                 round_num)
-
-                for name, param in self.model.named_parameters():
-                    if ('meta' in name) and ('fc' in name) and ('weight' in name) and (not 'view' in name):
-                        name = '_'.join([x[:name_num] for x in name.split('.')[1:]])
-                        # name_std = name + '_std'
-                        # write_dict[name_std] = round(float(torch.std(param.data.view(-1))), round_num)
-                        # name_mean = name + '_mean'
-                        # write_dict[name_mean] = round(float(torch.mean(param.data.view(-1))), round_num)
-                        name_std10 = name + '_std10'
-                        ratio = 0.1
-                        write_dict[name_std10] = round(
-                            float(torch.sum((param.data.view(-1) > - ratio * float(torch.std(param.data.view(-1)))) * (
-                                    param.data.view(-1) < ratio * float(torch.std(param.data.view(-1)))))) / len(
-                                param.data.view(-1)), round_num)
-
-                for name, param in self.model.named_parameters():
-                    if ('gate' in name) and (not 'view' in name):
-                        name = '_'.join([x[:name_num] for x in name.split('.')[1:]])
-                        name_mean = name + '_mean'
-                        write_dict[name_mean] = round(float(torch.mean(param.data.view(-1))), round_num)
-                logger.info(write_dict)
-
     def _detect_anomaly(self, losses, loss_dict):
         if not torch.isfinite(losses).all():
             raise FloatingPointError(
@@ -828,7 +796,6 @@ class SimpleTrainer(TrainerBase):
                     self.iter, loss_dict
                 )
             )
-
     def _write_metrics(self, metrics_dict: dict):
         """
         Args:

@@ -5,12 +5,13 @@
       <excludeFolder url="file://$MODULE_DIR$/datasets/DukeMTMC-reID" />
       <excludeFolder url="file://$MODULE_DIR$/datasets/MSMT17_V2" />
       <excludeFolder url="file://$MODULE_DIR$/datasets/Market-1501-v15.09-15" />
+      <excludeFolder url="file://$MODULE_DIR$/datasets/Market-1501-v15.09.15" />
       <excludeFolder url="file://$MODULE_DIR$/datasets/VERI-Wild" />
       <excludeFolder url="file://$MODULE_DIR$/datasets/vehicleid" />
       <excludeFolder url="file://$MODULE_DIR$/datasets/veri" />
       <excludeFolder url="file://$MODULE_DIR$/datasets/veri_keypoint" />
     </content>
-    <orderEntry type="inheritedJdk" />
+    <orderEntry type="jdk" jdkName="Python 3.6 (seokeon_reid)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>
