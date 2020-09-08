@@ -1,1 +1,1 @@
-# META-person
+# DG-person
