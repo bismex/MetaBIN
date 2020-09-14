@@ -125,7 +125,7 @@ class TrainerBase:
                 self.meta_learning()
             if self.meta_learning_parameter['load_parameter']:
                 self.load_meta_param()
-            if self.meta_learning_parameter['meta_learning'] or self.meta_learning_parameter['load_parameter']:
+            if self.meta_learning_parameter['ori_iter'] or self.meta_learning_parameter['load_parameter']:
                 self.update_meta_param()
             if self.meta_learning_parameter['ori_iter']:
                 self.before_train() # check hooks.py, engine/defaults.py
@@ -184,10 +184,11 @@ class SimpleTrainer(TrainerBase):
         like evaluation during training, you can overwrite its train() method.
         """
 
-        self.model = model
         self.model_meta = model_meta
+        self.model = model
         self.data_loader = data_loader
-        self._data_loader_iter = iter(data_loader)
+        if self.model is not None:
+            self._data_loader_iter = iter(data_loader)
         self.optimizer = optimizer
         self.meta_learning_parameter = meta_learning_parameter
         if cfg.SOLVER.AMP:
@@ -382,7 +383,7 @@ class SimpleTrainer(TrainerBase):
                                              round_num)
 
             for name, param in model.named_parameters():
-                if ('meta' in name) and ('fc' in name) and ('weight' in name) and (not 'view' in name):
+                if ('meta' in name) and ('fc' in name) and ('weight' in name) and (not 'domain' in name):
                     name = '_'.join([x[:name_num] for x in name.split('.')[1:]])
                     # name_std = name + '_std'
                     # write_dict[name_std] = round(float(torch.std(param.data.view(-1))), round_num)
@@ -396,7 +397,7 @@ class SimpleTrainer(TrainerBase):
                             param.data.view(-1)), round_num)
 
             for name, param in model.named_parameters():
-                if ('gate' in name) and (not 'view' in name):
+                if ('gate' in name) and (not 'domain' in name):
                     name = '_'.join([x[:name_num] for x in name.split('.')[1:]])
                     name_mean = name + '_mean'
                     write_dict[name_mean] = round(float(torch.mean(param.data.view(-1))), round_num)
@@ -432,7 +433,7 @@ class SimpleTrainer(TrainerBase):
         loss_name_init = self.meta_learning_parameter['loss_name_init']
         loss_name_mtrain = self.meta_learning_parameter['loss_name_mtrain']
         loss_name_mtest = self.meta_learning_parameter['loss_name_mtest']
-        num_view = len(dataloader_init)
+        num_domain = len(dataloader_init)
         if num_mtrain < 1:
             logger.info('error in num_mtrain')
         dataloader_init_iter = []
@@ -464,9 +465,9 @@ class SimpleTrainer(TrainerBase):
         while(cnt < iter_local):
             cnt += 1
             scheduler_init.step()
-            for i in range(num_view):
+            for i in range(num_domain):
                 data = next(dataloader_init_iter[i])
-                opt['view_idx'] = int(i)
+                opt['domain_idx'] = int(i)
                 losses, loss_dict = self.basic_forward(opt, data)
                 optimizer_init.zero_grad()
                 if self.scaler is None:
@@ -479,8 +480,8 @@ class SimpleTrainer(TrainerBase):
             t1 = time.time()
             remaining_time = (iter_local - cnt)/cnt*(t1-t0)
             if cnt % write_period == 0:
-                logger.info('1) [{}/{}] Meta-Initialization ({} views), eta:{}h:{}m:{}s, loss:{}'.format(
-                    cnt, iter_local, num_view, int(remaining_time // 3600), int((remaining_time // 60) % 60),
+                logger.info('1) [{}/{}] Meta-Initialization ({} domains), eta:{}h:{}m:{}s, loss:{}'.format(
+                    cnt, iter_local, num_domain, int(remaining_time // 3600), int((remaining_time // 60) % 60),
                     int((remaining_time) % 60), ['{}:{}'.format(name, round(float(val), 4)) for name, val in loss_dict.items()]))
             self.print_selected_optimizer('Init', idx_group, optimizer_init, detail_mode)
         t_final = time.time()
@@ -497,7 +498,7 @@ class SimpleTrainer(TrainerBase):
 
         cnt_global = 0
         t0 = time.time()
-        # iteration_all = 50
+        # iteration_all = 2
         save_iter = list()
         if self.meta_learning_parameter['save_meta_param']:
             save_iter.append(int(iteration_all // 3))
@@ -527,9 +528,9 @@ class SimpleTrainer(TrainerBase):
             cnt_local = 0
             while(cnt_local < iter_init_inner):
                 cnt_local += 1
-                for i in range(num_view):
+                for i in range(num_domain):
                     data = next(dataloader_init_iter[i])
-                    opt['view_idx'] = int(i)
+                    opt['domain_idx'] = int(i)
                     losses, loss_dict_minit = self.basic_forward(opt, data)
                     optimizer_final.zero_grad()
                     if self.scaler is None:
@@ -567,7 +568,7 @@ class SimpleTrainer(TrainerBase):
             cnt_outer = 0
             while(cnt_outer < iter_init_outer):
                 cnt_outer += 1
-                list_all = np.random.permutation(num_view)
+                list_all = np.random.permutation(num_domain)
                 list_mtrain = list(list_all[0:num_mtrain])
                 list_mtest = list(list_all[num_mtrain:num_mtrain+num_mtest])
 
@@ -592,7 +593,7 @@ class SimpleTrainer(TrainerBase):
                             data = next(dataloader_mtrain_iter[idx_mtrain])
                         elif inner_loop_type == 'diff':
                             data = next(dataloader_mtrain_iter[idx_mtrain])
-                        opt['view_idx'] = int(idx_mtrain)
+                        opt['domain_idx'] = int(idx_mtrain)
 
                         losses, loss_dict_mtrain = self.basic_forward(opt, data)
 
@@ -602,7 +603,7 @@ class SimpleTrainer(TrainerBase):
                                 if param.grad is not None:
                                     param.grad = None
                             for name, param in self.model_meta.named_parameters(): # grad update
-                                if 'view{}'.format(opt['view_idx']) in name:
+                                if 'domain{}'.format(opt['domain_idx']) in name:
                                     lr = optimizer_final.param_groups[dict_group[name]]['lr']
                                     grads = torch.autograd.grad(losses, param,
                                                                 create_graph=opt['use_second_order'],
@@ -621,7 +622,7 @@ class SimpleTrainer(TrainerBase):
                             old_param = opt['new_param']
                             opt['new_param'] = dict()
                             for name, param in old_param.items(): # grad update
-                                if 'view{}'.format(opt['view_idx']) in name:
+                                if 'domain{}'.format(opt['domain_idx']) in name:
                                     grads = torch.autograd.grad(losses, param,
                                                                 create_graph=opt['use_second_order'],
                                                                 allow_unused=True)[0]
@@ -646,7 +647,7 @@ class SimpleTrainer(TrainerBase):
                     opt['ds_flag'] = True
                     opt['param_update'] = True
                     opt['loss'] = loss_name_mtest
-                    opt['view_idx'] = int(idx_mtrain)
+                    opt['domain_idx'] = int(idx_mtrain)
                     meta_test_losses = []
                     for j, idx_mtest in enumerate(list_mtest):
                         if j == 0:
@@ -657,7 +658,7 @@ class SimpleTrainer(TrainerBase):
                             data['targets'] = torch.cat((data['targets'], new_data['targets']), 0)
                             data['camid'] = torch.cat((data['camid'], new_data['camid']), 0)
                             data['img_path'].extend(new_data['img_path'])
-                            data['others']['dir'] = torch.cat((data['others']['dir'], new_data['others']['dir']), 0)
+                            data['others']['domains'] = torch.cat((data['others']['domains'], new_data['others']['domains']), 0)
 
                     final_losses, loss_dict_mtest = self.basic_forward(opt, data)
                     # meta_test_losses.append(losses)
@@ -699,8 +700,8 @@ class SimpleTrainer(TrainerBase):
 
             if cnt_global % write_period == 0:
 
-                logger.info('2) [{}/{}] Meta-Optimization ({} views), eta:{}h:{}m:{}s, [test]{}, [reg_sum]:{} //// [train]{}, [init]{}, '.format(
-                    cnt_global, iteration_all, num_view, int(remaining_time // 3600), int((remaining_time // 60) % 60),
+                logger.info('2) [{}/{}] Meta-Optimization ({} domains), eta:{}h:{}m:{}s, [test]{}, [reg_sum]:{} //// [train]{}, [init]{}, '.format(
+                    cnt_global, iteration_all, num_domain, int(remaining_time // 3600), int((remaining_time // 60) % 60),
                     int((remaining_time) % 60),
                     ['{}:{}'.format(name, round(float(val), 4)) for name, val in loss_dict_mtest.items()],
                     [round(float(torch.sum(torch.abs(param))), 6) for name, param in self.model_meta.named_parameters() if 'reg' in name],

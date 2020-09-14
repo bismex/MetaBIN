@@ -72,10 +72,10 @@ class MetalearningHead(nn.Module):
             self.bottleneck = bottleneck_layer(in_feat, reduction_dim, cfg)
             if 'bottleneck' in cfg.META.MODEL.SPLIT_LAYER:
                 self.bottleneck_meta_learning = True
-                n_view = cfg.META.DATA.NUM_VIEW
+                n_domain = cfg.META.DATA.NUM_DOMAINS
                 self.bottleneck_meta = nn.ModuleDict()
-                for i in range(n_view):
-                    self.bottleneck_meta['view{}'.format(i)] = bottleneck_layer(in_feat, reduction_dim, cfg)
+                for i in range(n_domain):
+                    self.bottleneck_meta['domain{}'.format(i)] = bottleneck_layer(in_feat, reduction_dim, cfg)
 
                 self.bottleneck_reg = nn.Linear(in_feat * reduction_dim, 1, bias=False)
                 self.bottleneck_reg.apply(weights_init_kaiming)
@@ -87,11 +87,11 @@ class MetalearningHead(nn.Module):
         self.classifier_meta_learning = False
         if 'classifier'in cfg.META.MODEL.SPLIT_LAYER:
             self.classifier_meta_learning = True
-            n_view = cfg.META.DATA.NUM_VIEW
+            n_domain = cfg.META.DATA.NUM_DOMAINS
             self.classifier_meta = nn.ModuleDict()
-            for i in range(n_view):
-                self.classifier_meta['view{}'.format(i)] = nn.Linear(reduction_dim, num_classes, bias=False)
-                self.classifier_meta['view{}'.format(i)].apply(weights_init_kaiming)
+            for i in range(n_domain):
+                self.classifier_meta['domain{}'.format(i)] = nn.Linear(reduction_dim, num_classes, bias=False)
+                self.classifier_meta['domain{}'.format(i)].apply(weights_init_kaiming)
             self.classifier_reg = nn.Linear(reduction_dim * num_classes, 1, bias=False)
             self.classifier_reg.apply(weights_init_kaiming)
 
@@ -128,7 +128,7 @@ class MetalearningHead(nn.Module):
         if self.BOTTLENECK:
             features = self.pool_layer(features)
             if self.bottleneck_meta_learning and opt['ds_flag']:
-                global_feat = self.bottleneck_meta['view{}'.format(opt['view_idx'])](features[...,0,0], opt)
+                global_feat = self.bottleneck_meta['domain{}'.format(opt['domain_idx'])](features[...,0,0], opt)
             else:
                 global_feat = self.bottleneck(features[...,0,0], opt)
             global_feat = global_feat.unsqueeze(-1)
@@ -151,7 +151,6 @@ class MetalearningHead(nn.Module):
 
         if self.classifier_meta_learning and opt['ds_flag']:
 
-            # cls_outputs = self.classifier_meta['view{}'.format(opt['view_idx'])](bn_feat)
             if opt['param_update']:
                 flag_run = False
                 for name, param in opt['new_param'].items():
@@ -161,11 +160,11 @@ class MetalearningHead(nn.Module):
                         flag_run = True
                         break
                 if not flag_run:
-                    cls_outputs = nn.functional.linear(input = bn_feat, weight = self.classifier_meta['view{}'.format(opt['view_idx'])].weight, bias = None)
-                    pred_class_logits = F.linear(bn_feat, self.classifier_meta['view{}'.format(opt['view_idx'])].weight)
+                    cls_outputs = nn.functional.linear(input = bn_feat, weight = self.classifier_meta['domain{}'.format(opt['domain_idx'])].weight, bias = None)
+                    pred_class_logits = F.linear(bn_feat, self.classifier_meta['domain{}'.format(opt['domain_idx'])].weight)
             else:
-                cls_outputs = nn.functional.linear(input = bn_feat, weight = self.classifier_meta['view{}'.format(opt['view_idx'])].weight, bias = None)
-                pred_class_logits = F.linear(bn_feat, self.classifier_meta['view{}'.format(opt['view_idx'])].weight)
+                cls_outputs = nn.functional.linear(input = bn_feat, weight = self.classifier_meta['domain{}'.format(opt['domain_idx'])].weight, bias = None)
+                pred_class_logits = F.linear(bn_feat, self.classifier_meta['domain{}'.format(opt['domain_idx'])].weight)
 
         else:
 

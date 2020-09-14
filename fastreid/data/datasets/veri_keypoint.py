@@ -121,7 +121,7 @@ class VeRi_keypoint(ImageDataset):
             while(j < len(train_name) and not flag_break):
                 if train_name[j] in x[0]:
                     add_info = {} # dictionary
-                    add_info['dir'] = int(train_orientation[j])
+                    add_info['domains'] = int(train_orientation[j])
                     data[i] = list(data[i])
                     data[i].append(add_info)
                     data[i] = tuple(data[i])

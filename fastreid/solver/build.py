@@ -34,7 +34,7 @@ def build_optimizer(cfg, model):
             lr *= cfg.META.GRL.LR_FACTOR
         if "bin_gate" in key:
             print(key, value.shape)
-            lr *= 100
+            lr *= cfg.META.BIN_GATE.LR_FACTOR
         params += [{"name": key, "params": [value], "lr": lr, "weight_decay": weight_decay, "freeze": False}]
 
     solver_opt = cfg.SOLVER.OPT
@@ -48,23 +48,32 @@ def build_optimizer(cfg, model):
     return opt_fns
 
 
-def build_lr_scheduler(cfg, optimizer):
+def build_lr_scheduler(optimizer,
+                       scheduler_method,
+                       warmup_factor,
+                       warmup_iters,
+                       warmup_method,
+                       milestones,
+                       gamma,
+                       max_iters,
+                       delay_iters,
+                       eta_min_lr):
     scheduler_args = {
         "optimizer": optimizer,
 
         # warmup options
-        "warmup_factor": cfg.SOLVER.WARMUP_FACTOR,
-        "warmup_iters": cfg.SOLVER.WARMUP_ITERS,
-        "warmup_method": cfg.SOLVER.WARMUP_METHOD,
+        "warmup_factor": warmup_factor,
+        "warmup_iters": warmup_iters,
+        "warmup_method": warmup_method,
 
         # multi-step lr scheduler options
-        "milestones": cfg.SOLVER.STEPS,
-        "gamma": cfg.SOLVER.GAMMA,
+        "milestones": milestones,
+        "gamma": gamma,
 
         # cosine annealing lr scheduler options
-        "max_iters": cfg.SOLVER.MAX_ITER,
-        "delay_iters": cfg.SOLVER.DELAY_ITERS,
-        "eta_min_lr": cfg.SOLVER.ETA_MIN_LR,
+        "max_iters": max_iters,
+        "delay_iters": delay_iters,
+        "eta_min_lr": eta_min_lr,
 
     }
-    return getattr(lr_scheduler, cfg.SOLVER.SCHED)(**scheduler_args)
+    return getattr(lr_scheduler, scheduler_method)(**scheduler_args)

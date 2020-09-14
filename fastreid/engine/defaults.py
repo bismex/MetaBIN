@@ -197,11 +197,6 @@ class DefaultTrainer(SimpleTrainer):
     """
 
     def __init__(self, cfg):
-        """
-        Args:
-            cfg (CfgNode):
-        """
-
         logger = logging.getLogger("fastreid")
         if not logger.isEnabledFor(logging.INFO):  # setup_logger is not called for fastreid
             setup_logger()
@@ -213,8 +208,8 @@ class DefaultTrainer(SimpleTrainer):
         cfg.defrost()
         # about meta weight loader
         if cfg.META.SOLVER.FINAL.WEIGHT_LOADER is not None:
-            cfg.META.SOLVER.INIT.NUM_EPOCH = 0
-            cfg.META.SOLVER.FINAL.NUM_EPOCH = 0
+            cfg.META.SOLVER.INIT.MAX_ITER = 0
+            cfg.META.SOLVER.FINAL.MAX_ITER = 0
             logger.info('************** load meta-learning paramter **************')
             logger.info('Folder: {}'.format(cfg.META.SOLVER.FINAL.WEIGHT_FOLDER))
             logger.info('Name: {}'.format(cfg.META.SOLVER.FINAL.WEIGHT_LOADER))
@@ -222,22 +217,29 @@ class DefaultTrainer(SimpleTrainer):
             meta_learning_parameter['load_parameter_dir'] = os.path.join(cfg.META.SOLVER.FINAL.WEIGHT_FOLDER, cfg.META.SOLVER.FINAL.WEIGHT_LOADER)
             assert os.path.isfile(meta_learning_parameter['load_parameter_dir'])
         else:
-            logger.info('***** meta-learning paramter does not exist *****')
+            logger.info('***** meta-learning paramter to load does not exist *****')
             meta_learning_parameter['load_parameter'] = False
 
         # about meta-learing and original learning
-        if cfg.META.SOLVER.INIT.NUM_EPOCH + cfg.META.SOLVER.FINAL.NUM_EPOCH > 0:
+        if cfg.META.SOLVER.INIT.MAX_ITER + cfg.META.SOLVER.FINAL.MAX_ITER > 0:
             meta_learning_parameter['meta_learning'] = True
+            logger.info('***** meta-learning (O) *****')
         else:
             meta_learning_parameter['meta_learning'] = False
-        if cfg.META.SOLVER.NO_TRAIN_ORIGINAL:
-            meta_learning_parameter['ori_iter'] = False
-        else:
+            logger.info('***** meta-learning (X) *****')
+        if cfg.META.SOLVER.TRAIN_ORIGINAL:
             meta_learning_parameter['ori_iter'] = True
-
+            logger.info('***** Original training (O) *****')
+        else:
+            meta_learning_parameter['ori_iter'] = False
+            logger.info('***** Original training (X) *****')
+            model = None
+            data_loader = None
+            optimizer = None
 
         # If meta learning
         if meta_learning_parameter['meta_learning']: # meta_learning on
+            # Make model
             old_pretrained = cfg.MODEL.BACKBONE.PRETRAIN
             if 'scratch' in cfg.META.SOLVER.FINAL.INITIALIZE_CONV_STATE_META:
                 cfg.MODEL.BACKBONE.PRETRAIN = False
@@ -245,34 +247,40 @@ class DefaultTrainer(SimpleTrainer):
                 cfg.MODEL.BACKBONE.PRETRAIN = True
             else:
                 print('error in INITIALIZE_CONV_STATE_META')
-            model_meta = self.build_model(cfg)
 
-            if 'scratch' in cfg.META.SOLVER.FINAL.INITIALIZE_CONV_STATE_ORI:
-                cfg.MODEL.BACKBONE.PRETRAIN = False
-            elif 'pretrained' in cfg.META.SOLVER.FINAL.INITIALIZE_CONV_STATE_ORI:
-                cfg.MODEL.BACKBONE.PRETRAIN = True
-            else:
-                print('error in INITIALIZE_CONV_STATE_ORI')
-            model = self.build_model(cfg)
+            model_meta = self.build_model(cfg)
+            logger.info('*[meta]* pretrained ori-model:{}'.format(cfg.MODEL.BACKBONE.PRETRAIN))
+            if meta_learning_parameter['ori_iter']:
+                if 'scratch' in cfg.META.SOLVER.FINAL.INITIALIZE_CONV_STATE_ORI:
+                    cfg.MODEL.BACKBONE.PRETRAIN = False
+                elif 'pretrained' in cfg.META.SOLVER.FINAL.INITIALIZE_CONV_STATE_ORI:
+                    cfg.MODEL.BACKBONE.PRETRAIN = True
+                else:
+                    print('error in INITIALIZE_CONV_STATE_ORI')
+                model = self.build_model(cfg)
+                logger.info('*[meta]* pretrained meta-model:{}'.format(cfg.MODEL.BACKBONE.PRETRAIN))
             cfg.MODEL.BACKBONE.PRETRAIN = old_pretrained
+
             meta_learning_parameter['optimizer_init'] = self.build_optimizer(cfg, model_meta)
             meta_learning_parameter['optimizer_final'] = self.build_optimizer(cfg, model_meta)
 
             num_dataset = [len(x.dataset) for x in data_loader_add['init']]
-            num_view = len(num_dataset)
-            num_iter = cfg.META.SOLVER.INIT.NUM_EPOCH * max(num_dataset) // cfg.META.DATA.IMS_PER_BATCH
-            meta_learning_parameter['iter_local'] = int(num_iter)
+            num_source = len(num_dataset)
+            ratio_init = max(num_dataset)
+            ratio_init //= cfg.META.SOLVER.INIT.IMS_PER_BATCH
+            meta_learning_parameter['iter_local'] = int(cfg.META.SOLVER.INIT.MAX_ITER * ratio_init)
+            logger.info('*[meta]* the iteration number of initialization:{}'.format(meta_learning_parameter['iter_local']))
             if cfg.META.SOLVER.MTEST.ONLY_ONE_DOMAIN:
                 meta_learning_parameter['num_mtest'] = 1
             else:
-                meta_learning_parameter['num_mtest'] = num_view - cfg.META.SOLVER.MTRAIN.NUM_DOMAIN
+                meta_learning_parameter['num_mtest'] = num_source - cfg.META.SOLVER.MTRAIN.NUM_DOMAIN
+
 
             num_dataset = [len(x.dataset) for x in data_loader_add['mtest']]
-            num_iter = cfg.META.SOLVER.FINAL.NUM_EPOCH * max(num_dataset)
-            num_iter *= (num_view / meta_learning_parameter['num_mtest'] / cfg.META.SOLVER.INIT.OUTER_LOOP)
-            num_iter //= cfg.META.SOLVER.MTEST.IMS_PER_BATCH
-            meta_learning_parameter['iteration_all'] = int(
-                num_iter)  # cfg.META.SOLVER.FINAL.NUM_EPOCH, META.SOLVER.MTEST.NUM_DOMAIN, dataloader_mtest
+            ratio_final = max(num_dataset)
+            ratio_final //= cfg.META.SOLVER.MTEST.IMS_PER_BATCH
+            meta_learning_parameter['iteration_all'] = int(cfg.META.SOLVER.FINAL.MAX_ITER * ratio_final)
+            logger.info('*[meta]* the iteration number of meta-learning:{}'.format(meta_learning_parameter['iteration_all']))
 
             meta_learning_parameter['loss_combined'] = cfg.META.LOSS.COMBINED
             meta_learning_parameter['iter_init_inner'] = cfg.META.SOLVER.INIT.INNER_LOOP
@@ -296,60 +304,91 @@ class DefaultTrainer(SimpleTrainer):
             meta_learning_parameter['sync'] = cfg.META.SOLVER.SYNC
 
             # Meta-learning optimizer
-            if not meta_learning_parameter['optimizer_final'] == None:
-                if cfg.META.SOLVER.FINAL.SCHED == 'constant':
-                    meta_learning_parameter['scheduler_final'] = \
-                        optim.lr_scheduler.StepLR(meta_learning_parameter['optimizer_final'], step_size=100000, gamma=1)
-                elif cfg.META.SOLVER.FINAL.SCHED == 'MultiStepLR':
-                    meta_learning_parameter['scheduler_final'] = \
-                        optim.lr_scheduler.MultiStepLR(meta_learning_parameter['optimizer_final'],
-                                                       milestones=[x * int(num_iter) for x in
-                                                                   cfg.META.SOLVER.FINAL.STEPS],
-                                                       gamma=cfg.META.SOLVER.FINAL.GAMMA)
-                else:
-                    print('error in scheduler_final')
             if not meta_learning_parameter['optimizer_init'] == None:
-                if cfg.META.SOLVER.INIT.SCHED == 'constant':
-                    meta_learning_parameter['scheduler_init'] = \
-                        optim.lr_scheduler.StepLR(meta_learning_parameter['optimizer_init'], step_size=100000, gamma=1)
-                else:
-                    print('error in scheduler_init')
+                meta_learning_parameter['scheduler_init'] = self.build_lr_scheduler(
+                    optimizer=meta_learning_parameter['optimizer_init'],
+                    scheduler_method=cfg.META.SOLVER.INIT.SCHED,
+                    warmup_factor=cfg.SOLVER.WARMUP_FACTOR,
+                    warmup_iters= int(cfg.META.SOLVER.INIT.WARMUP_ITERS * ratio_init),
+                    warmup_method=cfg.SOLVER.WARMUP_METHOD,
+                    milestones=[int(x * ratio_init) for x in cfg.META.SOLVER.INIT.STEPS],
+                    gamma=cfg.META.SOLVER.INIT.GAMMA,
+                    max_iters=int(cfg.META.SOLVER.INIT.MAX_ITER * ratio_init),
+                    delay_iters=cfg.SOLVER.DELAY_ITERS,
+                    eta_min_lr=cfg.SOLVER.ETA_MIN_LR,
+                )
+
+            if not meta_learning_parameter['optimizer_final'] == None:
+                meta_learning_parameter['scheduler_final'] = self.build_lr_scheduler(
+                    optimizer = meta_learning_parameter['optimizer_final'],
+                    scheduler_method = cfg.META.SOLVER.FINAL.SCHED,
+                    warmup_factor = cfg.SOLVER.WARMUP_FACTOR,
+                    warmup_iters= int(cfg.META.SOLVER.FINAL.WARMUP_ITERS * ratio_final),
+                    warmup_method=cfg.SOLVER.WARMUP_METHOD,
+                    milestones=[int(x * ratio_final) for x in cfg.META.SOLVER.FINAL.STEPS],
+                    gamma=cfg.META.SOLVER.FINAL.GAMMA,
+                    max_iters= int(cfg.META.SOLVER.FINAL.MAX_ITER * ratio_final),
+                    delay_iters=cfg.SOLVER.DELAY_ITERS,
+                    eta_min_lr=cfg.SOLVER.ETA_MIN_LR,
+                )
         else:
-            model = self.build_model(cfg)
+
+            if meta_learning_parameter['ori_iter']:
+                model = self.build_model(cfg)
             meta_learning_parameter['optimizer_init'] = None
             meta_learning_parameter['optimizer_final'] = None
             model_meta = None
         cfg.freeze()
-        optimizer = self.build_optimizer(cfg, model) # params, lr, momentum, ..
 
-        # For training, wrap with DDP. But don't need this for inference.
-        if comm.get_world_size() > 1:
-            # ref to https://github.com/pytorch/pytorch/issues/22049 to set `find_unused_parameters=True`
-            # for part of the parameters is not updated.
-            model = DistributedDataParallel(
-                model, device_ids=[comm.get_local_rank()], broadcast_buffers=False
-            )
+        if meta_learning_parameter['ori_iter']:
+            optimizer = self.build_optimizer(cfg, model) # params, lr, momentum, ..
+            # For training, wrap with DDP. But don't need this for inference.
+            if comm.get_world_size() > 1:
+                # ref to https://github.com/pytorch/pytorch/issues/22049 to set `find_unused_parameters=True`
+                # for part of the parameters is not updated.
+                model = DistributedDataParallel(
+                    model, device_ids=[comm.get_local_rank()], broadcast_buffers=False
+                )
 
         super().__init__(cfg, model, model_meta, data_loader, optimizer, meta_learning_parameter)
 
-        self.scheduler = self.build_lr_scheduler(cfg, optimizer)
-        # Assume no other objects need to be checkpointed.
-        # We can later make it checkpoint the stateful hooks
-        self.checkpointer = Checkpointer(
-            # Assume you want to save checkpoints together with logs/statistics
-            model,
-            cfg.OUTPUT_DIR,
-            save_to_disk=comm.is_main_process(),
-            optimizer=optimizer,
-            scheduler=self.scheduler,
-        )
+
+        if meta_learning_parameter['ori_iter']:
+            self.scheduler = self.build_lr_scheduler(
+                optimizer = optimizer,
+                scheduler_method = cfg.SOLVER.SCHED,
+                warmup_factor = cfg.SOLVER.WARMUP_FACTOR,
+                warmup_iters=cfg.SOLVER.WARMUP_ITERS,
+                warmup_method=cfg.SOLVER.WARMUP_METHOD,
+                milestones=cfg.SOLVER.STEPS,
+                gamma=cfg.SOLVER.GAMMA,
+                max_iters=cfg.SOLVER.MAX_ITER,
+                delay_iters=cfg.SOLVER.DELAY_ITERS,
+                eta_min_lr=cfg.SOLVER.ETA_MIN_LR,
+            )
+
+            # Assume no other objects need to be checkpointed.
+            # We can later make it checkpoint the stateful hooks
+            self.checkpointer = Checkpointer(
+                # Assume you want to save checkpoints together with logs/statistics
+                model,
+                cfg.OUTPUT_DIR,
+                save_to_disk=comm.is_main_process(),
+                optimizer=optimizer,
+                scheduler=self.scheduler,
+            )
         self.start_iter = 0
         if cfg.SOLVER.SWA.ENABLED:
             self.max_iter = cfg.SOLVER.MAX_ITER + cfg.SOLVER.SWA.ITER
         else:
             self.max_iter = cfg.SOLVER.MAX_ITER
         self.cfg = cfg
-        self.register_hooks(self.build_hooks())
+
+        if meta_learning_parameter['ori_iter']:
+            self.register_hooks(self.build_hooks())
+
+
+
 
     def resume_or_load(self, resume=True):
         """
@@ -515,12 +554,30 @@ class DefaultTrainer(SimpleTrainer):
         return build_optimizer(cfg, model)
 
     @classmethod
-    def build_lr_scheduler(cls, cfg, optimizer):
+    def build_lr_scheduler(cls, optimizer,
+                           scheduler_method,
+                           warmup_factor,
+                           warmup_iters,
+                           warmup_method,
+                           milestones,
+                           gamma,
+                           max_iters,
+                           delay_iters,
+                           eta_min_lr):
         """
         It now calls :func:`fastreid.solver.build_lr_scheduler`.
         Overwrite it if you'd like a different scheduler.
         """
-        return build_lr_scheduler(cfg, optimizer)
+        return build_lr_scheduler(optimizer,
+                                  scheduler_method,
+                                  warmup_factor,
+                                  warmup_iters,
+                                  warmup_method,
+                                  milestones,
+                                  gamma,
+                                  max_iters,
+                                  delay_iters,
+                                  eta_min_lr)
 
     @classmethod
     def build_train_loader(cls, cfg):

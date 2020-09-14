@@ -9,7 +9,7 @@ INPUT:
   RPT:
     ENABLED: False #
   REA:
-    ENABLED: True #
+    ENABLED: False #
 
 
 META:
@@ -18,72 +18,75 @@ META:
     REDUCTION_DIM: 1024 
     NORM: True
   DATA:
-    NAMES: "" #
-    NUM_VIEW: 4 
+    NAMES: "DG" # 'VeRi_keypoint_each_4', 'DG'
+    NUM_DOMAINS: 5
   REGULARIZER:
     LR_FACTOR: 10.0
     DO_IT: False # No reg
   MODEL:
-    LR_FACTOR: 1.0 
-    SPLIT_LAYER: ('',) # No Meta
+    LR_FACTOR: 1.0
+    SPLIT_LAYER: ('classifier',) # No Meta
   SOLVER:
-    INIT: 
-      NUM_EPOCH: 0 
-      INNER_LOOP: 1 
-      OUTER_LOOP: 40 
-    MTRAIN: 
-      IMS_PER_BATCH: 128 
-      NUM_INSTANCE: 1 
-      INNER_LOOP: 1 
+    INIT:
+      IMS_PER_BATCH: 64
+      NUM_INSTANCE: 4
+      MAX_ITER: 0
+      INNER_LOOP: 1
+      OUTER_LOOP: 5
+    MTRAIN:
+      IMS_PER_BATCH: 64
+      NUM_INSTANCE: 4
+      INNER_LOOP: 1
       INNER_LOOP_TYPE: 'same'
-      NUM_DOMAIN: 3 
-    MTEST: 
-      IMS_PER_BATCH: 128 
-      NUM_INSTANCE: 1 
-      ONLY_ONE_DOMAIN: False 
-    FINAL: 
-      NUM_EPOCH: 0 
+      NUM_DOMAIN: 3
+    MTEST:
+      IMS_PER_BATCH: 64
+      NUM_INSTANCE: 4
+      ONLY_ONE_DOMAIN: False
+    FINAL:
+      MAX_ITER: 100
       STEPS: [30,60]
-      INITIALIZE_CONV_STATE_META: 'pretrained' 
-      INITIALIZE_CONV_STATE_ORI: 'pretrained' 
-      INITIALIZE_CONV: True 
+      INITIALIZE_CONV_STATE_META: 'pretrained'
+      INITIALIZE_CONV_STATE_ORI: 'pretrained'
+      INITIALIZE_CONV: True
       INITIALIZE_FC: True
       DETAIL_MODE: False
-      WEIGHT_LOADER: None 
-      WEIGHT_FOLDER: None 
-      SAVE_META_PARAM: True 
-    WRITE_PERIOD: 20
-    NO_TRAIN_ORIGINAL: False 
+      WEIGHT_LOADER: None
+      WEIGHT_FOLDER: None
+      SAVE_META_PARAM: True
+    WRITE_PERIOD: 1
+    TRAIN_ORIGINAL: False
     SYNC: True
   LOSS:
     META_REG_WEIGHT: 0.001
-    ORI_REG_WEIGHT: 0.01 
+    ORI_REG_WEIGHT: 0.01
     INIT_NAME: ("CrossEntropyLoss",)
-    MTRAIN_NAME: ("CrossEntropyLoss", "Reg_bottleneck","Reg_classifier",) 
+    MTRAIN_NAME: ("CrossEntropyLoss", "Reg_classifier",)
     MTEST_NAME: ("CrossEntropyLoss", )
 
 
 MODEL:
-  META_ARCHITECTURE: "Metalearning" 
+  META_ARCHITECTURE: "Metalearning"
   BACKBONE:
     WITH_IBN: False  #  'pretrained/resnet50_ibn_a.pth'
-    PRETRAIN: True 
+    WITH_NL: False
+    PRETRAIN: True
     PRETRAIN_PATH: ''
-    NORM: "BN" # "BN", "GN", "GhostBN", "FrozenBN"
+    NORM: "BN"
   HEADS:
     NAME: "MetalearningHead"
-    POOL_LAYER: "fastavgpool"
-    # 'fastavgpool', 'avgpool', 'maxpool', 'gempoolP', 'gempool', 'avgmaxpool', 'clipavgpool', 'identity'
+    POOL_LAYER: "fastavgpool" # 'fastavgpool', 'avgpool', 'maxpool', 'gempoolP', 'gempool', 'avgmaxpool', 'clipavgpool', 'identity'
     BT_NORM: "BN"
-    NORM: "BN" 
-    CLS_LAYER: "linear" # 'linear', 'arcSoftmax(x)', 'circleSoftmax(-)', 'amSoftmax'
+    NORM: "BN"
+    CLS_LAYER: "linear" # 'linear', 'arcSoftmax(x)', 'circleSoftmax', 'amSoftmax(poor)'
+    NECK_FEAT: "before"  # before, after
   LOSSES:
     CE:
       EPSILON: 0.1 # 0, 0.1
     TRI:
       HARD_MINING: True
       MARGIN: 0.3 # vehicle: 0.0
-    NAME: ("CrossEntropyLoss", "TripletLoss",) # "CrossEntropyLoss", "TripletLoss","CircleLoss",
+    NAME: ("CrossEntropyLoss", "TripletLoss",) # "CrossEntropyLoss", "TripletLoss","CircleLoss"
 
 DATASETS:
 #  NAMES: ("VeRi_keypoint",)
@@ -93,32 +96,28 @@ DATASETS:
 
 DATALOADER:
   NUM_INSTANCE: 4
-  NUM_WORKERS: 4
+  NUM_WORKERS: 1
 
 SOLVER:
-  AMP: True 
+  AMP: True
   OPT: "SGD" # SGD
   BASE_LR: 0.01 # 0.01
   ETA_MIN_LR: 7.7e-5
 
-  SWA:
-    ENABLED: False
-
-  MAX_ITER: 120 # vehicle: 100
-  STEPS: [40, 90] # vehicle: [40, 70]
+  MAX_ITER: 100 # vehicle: 100
+  STEPS: [40, 70] # vehicle: [40, 70]
 
   WARMUP_FACTOR: 0.01
   WARMUP_ITERS: 10
 
   CHECKPOINT_PERIOD: 30
   IMS_PER_BATCH: 64
-  WEIGHT_DECAY: 0.0005 
-  WEIGHT_DECAY_BIAS: 0.0005 
-  WRITE_PERIOD: 50 
-  MOMENTUM: 0.9 
+  WEIGHT_DECAY: 0.0005
+  WEIGHT_DECAY_BIAS: 0.0005
+  WRITE_PERIOD: 50
+  MOMENTUM: 0.9
 
 TEST:
   EVAL_PERIOD: 10
   IMS_PER_BATCH: 128
   REPORT_ALL: True
-

@@ -47,8 +47,8 @@ class Metalearning(nn.Module):
             outs['targets'] = batched_inputs["targets"].long().to(self.device)
             if self.other_dataset:
                 assert "others" in batched_inputs, "View ID annotation are missing in training!"
-                assert "dir" in batched_inputs['others'], "View ID annotation are missing in training!"
-                outs['views'] = batched_inputs['others']['dir'].long().to(self.device)
+                assert "domains" in batched_inputs['others'], "View ID annotation are missing in training!"
+                outs['domains'] = batched_inputs['others']['domains'].long().to(self.device)
 
             # PreciseBN flag, When do preciseBN on different dataset, the number of classes in new dataset
             # may be larger than that in the original dataset, so the circle/arcface will
@@ -86,7 +86,7 @@ class Metalearning(nn.Module):
         loss_names = opt['loss']
         loss_dict = {}
         if self._cfg['META']['GRL']['DO_IT']:
-            gt_domains = outs['views']
+            gt_domains = outs['domains']
             dom_outputs = outputs['dom_outputs']
             loss_dict['loss_dom'] = self._cfg['META']['GRL']['WEIGHT'] * \
                                     cross_entropy_loss(
@@ -142,9 +142,9 @@ class Metalearning(nn.Module):
                                 flag_run = True
                                 break
                         if not flag_run:
-                            model_w = self.heads.bottleneck_meta['view{}'.format(opt['view_idx'])].fc.weight
+                            model_w = self.heads.bottleneck_meta['domain{}'.format(opt['domain_idx'])].fc.weight
                     else:
-                        model_w = self.heads.bottleneck_meta['view{}'.format(opt['view_idx'])].fc.weight
+                        model_w = self.heads.bottleneck_meta['domain{}'.format(opt['domain_idx'])].fc.weight
 
                     loss_dict['loss_bottleneck_reg'] = self._cfg.META.LOSS.META_REG_WEIGHT * \
                                                        self.heads.bottleneck_reg(torch.abs(torch.flatten(model_w)))[0]
@@ -163,9 +163,9 @@ class Metalearning(nn.Module):
                                 flag_run = True
                                 break
                         if not flag_run:
-                            model_w = self.heads.classifier_meta['view{}'.format(opt['view_idx'])].weight
+                            model_w = self.heads.classifier_meta['domain{}'.format(opt['domain_idx'])].weight
                     else:
-                        model_w = self.heads.classifier_meta['view{}'.format(opt['view_idx'])].weight
+                        model_w = self.heads.classifier_meta['domain{}'.format(opt['domain_idx'])].weight
 
                     loss_dict['loss_classifier_reg'] = self._cfg.META.LOSS.META_REG_WEIGHT * \
                                                        self.heads.classifier_reg(torch.abs(torch.flatten(model_w)))[0]
