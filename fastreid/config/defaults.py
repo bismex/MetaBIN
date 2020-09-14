@@ -138,7 +138,7 @@ _C.MODEL.BACKBONE.WITH_IBN = False
 # If use SE block in backbone
 _C.MODEL.BACKBONE.WITH_SE = False
 # If use Non-local block in backbone
-_C.MODEL.BACKBONE.WITH_NL = False
+_C.MODEL.BACKBONE.WITH_NL = True
 # If use ImageNet pretrain model
 _C.MODEL.BACKBONE.PRETRAIN = True
 # Pretrain model path
@@ -239,7 +239,13 @@ _C.INPUT.DO_PAD = True
 _C.INPUT.PADDING_MODE = 'constant'
 _C.INPUT.PADDING = 10
 # Random color jitter
-_C.INPUT.DO_CJ = False
+_C.INPUT.CJ = CN()
+_C.INPUT.CJ.ENABLED = False
+_C.INPUT.CJ.PROB = 0.8
+_C.INPUT.CJ.BRIGHTNESS = 0.15
+_C.INPUT.CJ.CONTRAST = 0.15
+_C.INPUT.CJ.SATURATION = 0.1
+_C.INPUT.CJ.HUE = 0.1
 # Auto augmentation
 _C.INPUT.DO_AUTOAUG = False
 # Augmix augmentation
@@ -276,7 +282,7 @@ _C.DATALOADER.PK_SAMPLER = True
 _C.DATALOADER.NAIVE_WAY = True
 # Number of instance for each person
 _C.DATALOADER.NUM_INSTANCE = 4
-_C.DATALOADER.NUM_WORKERS = 1
+_C.DATALOADER.NUM_WORKERS = 4
 
 # ---------------------------------------------------------------------------- #
 # Solver
@@ -305,7 +311,7 @@ _C.SOLVER.STEPS = [40, 70]
 
 # Cosine annealing learning rate options
 _C.SOLVER.DELAY_ITERS = 0
-_C.SOLVER.ETA_MIN_LR = 7.7e-5
+_C.SOLVER.ETA_MIN_LR = 7.7e-5 # 3e-7
 
 # Warmup options
 _C.SOLVER.WARMUP_FACTOR = 0.01
@@ -342,6 +348,7 @@ _C.TEST.EVAL_PERIOD = 10
 # Number of images per batch in one process.
 _C.TEST.IMS_PER_BATCH = 128
 _C.TEST.METRIC = "cosine"
+_C.TEST.REPORT_ALL = True
 
 # Average query expansion
 _C.TEST.AQE = CN()

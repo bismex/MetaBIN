@@ -12,7 +12,7 @@ from fastreid.layers import GeneralizedMeanPoolingP, get_norm, AdaptiveAvgMaxPoo
 from fastreid.modeling.backbones import build_backbone
 from fastreid.modeling.backbones.resnet import Bottleneck
 from fastreid.modeling.heads import build_reid_heads
-from fastreid.modeling.losses import CrossEntropyLoss, TripletLoss
+# from fastreid.modeling.losses import CrossEntropyLoss, TripletLoss
 from fastreid.utils.weight_init import weights_init_kaiming
 from .build import META_ARCH_REGISTRY
 

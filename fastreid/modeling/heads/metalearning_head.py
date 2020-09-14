@@ -5,6 +5,11 @@
 """
 
 # import logging
+
+import torch.nn.functional as F
+from torch import nn
+
+
 from fastreid.layers import *
 from fastreid.utils.weight_init import weights_init_kaiming, weights_init_classifier
 from .build import REID_HEADS_REGISTRY
@@ -14,10 +19,28 @@ from torch.autograd import Function
 
 @REID_HEADS_REGISTRY.register()
 class MetalearningHead(nn.Module):
-    def __init__(self, cfg, in_feat, num_classes, pool_layer):
+    def __init__(self, cfg):
         super().__init__()
+
+
+        pool_type = cfg.MODEL.HEADS.POOL_LAYER
+        if pool_type == 'fastavgpool':   self.pool_layer = FastGlobalAvgPool2d()
+        elif pool_type == 'avgpool':     self.pool_layer = nn.AdaptiveAvgPool2d(1)
+        elif pool_type == 'maxpool':     self.pool_layer = nn.AdaptiveMaxPool2d(1)
+        elif pool_type == 'gempoolP':    self.pool_layer = GeneralizedMeanPoolingP()
+        elif pool_type == 'gempool':     self.pool_layer = GeneralizedMeanPooling()
+        elif pool_type == "avgmaxpool":  self.pool_layer = AdaptiveAvgMaxPool2d()
+        elif pool_type == 'clipavgpool': self.pool_layer = ClipGlobalAvgPool2d()
+        elif pool_type == "identity":    self.pool_layer = nn.Identity()
+        elif pool_type == "flatten":     self.pool_layer = Flatten()
+        else:
+            raise KeyError(f"{pool_type} is invalid, please choose from "
+                           f"'avgpool', 'maxpool', 'gempool', 'avgmaxpool' and 'identity'.")
+
+        in_feat = cfg.MODEL.HEADS.IN_FEAT
+        num_classes = cfg.MODEL.HEADS.NUM_CLASSES
+
         self.neck_feat = cfg.MODEL.HEADS.NECK_FEAT
-        self.pool_layer = pool_layer
 
         # Metalearning parameters
         reduction_dim = cfg.META.BOTTLENECK.REDUCTION_DIM # 1024
@@ -80,9 +103,11 @@ class MetalearningHead(nn.Module):
 
         # identity classification layer
         cls_type = cfg.MODEL.HEADS.CLS_LAYER
+
         if cls_type == 'linear':          self.classifier = nn.Linear(reduction_dim, num_classes, bias=False)
         elif cls_type == 'arcSoftmax':    self.classifier = ArcSoftmax(cfg, reduction_dim, num_classes)
         elif cls_type == 'circleSoftmax': self.classifier = CircleSoftmax(cfg, reduction_dim, num_classes)
+        elif cls_type == 'amSoftmax':     self.classifier = AMSoftmax(cfg, reduction_dim, num_classes)
         else:
             raise KeyError(f"{cls_type} is invalid, please choose from "
                            f"'linear', 'arcSoftmax' and 'circleSoftmax'.")
@@ -127,36 +152,55 @@ class MetalearningHead(nn.Module):
         if self.classifier_meta_learning and opt['ds_flag']:
 
             # cls_outputs = self.classifier_meta['view{}'.format(opt['view_idx'])](bn_feat)
-
             if opt['param_update']:
                 flag_run = False
                 for name, param in opt['new_param'].items():
                     if 'classifier_meta' in name:
-                        cls_outputs = torch.nn.functional.linear(input = bn_feat, weight = param, bias = None)
+                        cls_outputs = nn.functional.linear(input = bn_feat, weight = param, bias = None)
                         pred_class_logits = F.linear(bn_feat, param)
                         flag_run = True
                         break
                 if not flag_run:
-                    cls_outputs = torch.nn.functional.linear(input = bn_feat, weight = self.classifier_meta['view{}'.format(opt['view_idx'])].weight, bias = None)
+                    cls_outputs = nn.functional.linear(input = bn_feat, weight = self.classifier_meta['view{}'.format(opt['view_idx'])].weight, bias = None)
                     pred_class_logits = F.linear(bn_feat, self.classifier_meta['view{}'.format(opt['view_idx'])].weight)
             else:
-                cls_outputs = torch.nn.functional.linear(input = bn_feat, weight = self.classifier_meta['view{}'.format(opt['view_idx'])].weight, bias = None)
+                cls_outputs = nn.functional.linear(input = bn_feat, weight = self.classifier_meta['view{}'.format(opt['view_idx'])].weight, bias = None)
                 pred_class_logits = F.linear(bn_feat, self.classifier_meta['view{}'.format(opt['view_idx'])].weight)
 
         else:
-            try:              cls_outputs = self.classifier(bn_feat)
-            except TypeError: cls_outputs = self.classifier(bn_feat, targets['IDs']) # for ArcSoftmax & CircleSoftmax
-            pred_class_logits = F.linear(bn_feat, self.classifier.weight)
+
+            if self.classifier.__class__.__name__ == 'Linear':
+                cls_outputs = self.classifier(bn_feat)
+                pred_class_logits = F.linear(bn_feat, self.classifier.weight)
+            else:
+                cls_outputs = self.classifier(bn_feat, targets)
+                pred_class_logits = self.classifier.s * F.linear(F.normalize(bn_feat),
+                                                                 F.normalize(self.classifier.weight))
+
+            # try:              cls_outputs = self.classifier(bn_feat)
+            # except TypeError: cls_outputs = self.classifier(bn_feat, targets['IDs']) # for ArcSoftmax & CircleSoftmax
+            # pred_class_logits = F.linear(bn_feat, self.classifier.weight)
 
         if self.neck_feat == "before":  feat = global_feat[..., 0, 0] # this feature is triplet feature
         elif self.neck_feat == "after": feat = bn_feat
         else:
             raise KeyError("MODEL.HEADS.NECK_FEAT value is invalid, must choose from ('after' & 'before')")
 
+
+
         if self.GRL:
-            return cls_outputs, pred_class_logits, feat, dom_outputs
+            return {
+                "cls_outputs": cls_outputs,
+                "pred_class_logits": pred_class_logits,
+                "features": feat,
+                "dom_outputs": dom_outputs,
+            }
         else:
-            return cls_outputs, pred_class_logits, feat
+            return {
+                "cls_outputs": cls_outputs,
+                "pred_class_logits": pred_class_logits,
+                "features": feat,
+            }
 
 class bottleneck_layer(nn.Module):
 
@@ -185,15 +229,15 @@ class bottleneck_layer(nn.Module):
                 flag_run = False
                 for name, param in opt['new_param'].items():
                     if 'bottleneck_meta' in name:
-                        x = torch.nn.functional.linear(input = x, weight = param, bias = None)
+                        x = nn.functional.linear(input = x, weight = param, bias = None)
                         flag_run = True
                         break
                 if not flag_run:
-                    x = torch.nn.functional.linear(input=x, weight=self.fc.weight, bias=None)
+                    x = nn.functional.linear(input=x, weight=self.fc.weight, bias=None)
             else:
-                x = torch.nn.functional.linear(input = x, weight = self.fc.weight, bias = None)
+                x = nn.functional.linear(input = x, weight = self.fc.weight, bias = None)
         else:
-            x = torch.nn.functional.linear(input=x, weight=self.fc.weight, bias=None)
+            x = nn.functional.linear(input=x, weight=self.fc.weight, bias=None)
 
         if self.bn_flag:
             x = x.unsqueeze(-1)

@@ -170,12 +170,15 @@ def build_reid_train_loader(cfg):
     return train_loader, train_loader_add, cfg
 
 
-def build_reid_test_loader(cfg, dataset_name):
+def build_reid_test_loader(cfg, dataset_name, opt=None):
     test_transforms = build_transforms(cfg, is_train=False)
 
-    dataset = DATASET_REGISTRY.get(dataset_name)(root=_root)
-    if comm.is_main_process():
-        dataset.show_test()
+    if opt is None:
+        dataset = DATASET_REGISTRY.get(dataset_name)(root=_root)
+        if comm.is_main_process():
+            dataset.show_test()
+    else:
+        dataset = DATASET_REGISTRY.get(dataset_name)(root=[_root, opt])
     test_items = dataset.query + dataset.gallery
 
     test_set = CommDataset(test_items, test_transforms, relabel=False)
@@ -183,10 +186,17 @@ def build_reid_test_loader(cfg, dataset_name):
     batch_size = cfg.TEST.IMS_PER_BATCH
     data_sampler = samplers.InferenceSampler(len(test_set))
     batch_sampler = torch.utils.data.BatchSampler(data_sampler, batch_size, False)
+
+    gettrace = getattr(sys, 'gettrace', None)
+    if gettrace():
+        num_workers = 0
+    else:
+        num_workers = cfg.DATALOADER.NUM_WORKERS
+
     test_loader = DataLoader(
         test_set,
         batch_sampler=batch_sampler,
-        num_workers=4,  # save some memory
+        num_workers=num_workers,  # save some memory
         collate_fn=fast_batch_collator)
     return test_loader, len(dataset.query)
 

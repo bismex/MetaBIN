@@ -215,44 +215,25 @@ class SimpleTrainer(TrainerBase):
         opt['original_learning'] = True
         opt['loss'] = self.cfg['MODEL']['LOSSES']['NAME']
 
-        bin_gates = [p for p in self.model.parameters() if getattr(p, 'bin_gate', False)]
+        model = self.model.module if isinstance(self.model, DistributedDataParallel) else self.model
 
-        for name, param in self.model.named_parameters():
+
+        bin_gates = [p for p in model.parameters() if getattr(p, 'bin_gate', False)]
+
+        for name, param in model.named_parameters():
             param.grad = None
             if 'reg' in name:
                 param.requires_grad = False
-                # print('new_changed: {}'.format(torch.sum(self.model.state_dict()[name])))
 
         if self.cfg['META']['GRL']['DO_IT']:
             p = float(max(0, self.iter - self.cfg['SOLVER']['WARMUP_ITERS']) / (self.cfg['SOLVER']['MAX_ITER']-self.cfg['SOLVER']['WARMUP_ITERS']))
             constant = 2. / (1. + np.exp(-self.cfg['META']['GRL']['GAMMA'] * p)) - 1
             opt['GRL_constant'] = constant
 
-        if self.scaler is None:
-            if isinstance(self.model, DistributedDataParallel):
-                outputs, targets = self.model.module(data, opt)
-            else:
-                outputs, targets = self.model(data, opt)
-        else:
-            with torch.cuda.amp.autocast():
-                if isinstance(self.model, DistributedDataParallel):
-                    outputs, targets = self.model.module(data, opt)
-                else:
-                    outputs, targets = self.model(data, opt)
-
-        if self.scaler is None:
-            if isinstance(self.model, DistributedDataParallel):
-                loss_dict = self.model.module.losses(outputs, targets, opt)
-            else:
-                loss_dict = self.model.losses(outputs, targets, opt)
+        with torch.cuda.amp.autocast(enabled=self.scaler is not None):
+            outs = model(data, opt)
+            loss_dict = model.losses(outs, opt)
             losses = sum(loss_dict.values())
-        else:
-            with torch.cuda.amp.autocast():
-                if isinstance(self.model, DistributedDataParallel):
-                    loss_dict = self.model.module.losses(outputs, targets, opt)
-                else:
-                    loss_dict = self.model.losses(outputs, targets, opt)
-                losses = sum(loss_dict.values())
 
         self._detect_anomaly(losses, loss_dict)
 
@@ -279,51 +260,15 @@ class SimpleTrainer(TrainerBase):
             # print(p)
 
         if self.iter % (self.cfg.SOLVER.WRITE_PERIOD_PARAM * self.cfg.SOLVER.WRITE_PERIOD) == 0:
-            with torch.no_grad():
-                write_dict = dict()
-                round_num = 4
-                name_num = 20
-                for name, param in self.model.named_parameters():  # only update regularizer
-                    if 'reg' in name:
-                        name = '_'.join([x[:name_num] for x in name.split('.')[1:]])
-                        name = name + '+'
-                        write_dict[name] = round(float(torch.sum(param.data.view(-1) > 0)) / len(param.data.view(-1)),
-                                                 round_num)
-
-                for name, param in self.model.named_parameters():
-                    if ('meta' in name) and ('fc' in name) and ('weight' in name) and (not 'view' in name):
-                        name = '_'.join([x[:name_num] for x in name.split('.')[1:]])
-                        # name_std = name + '_std'
-                        # write_dict[name_std] = round(float(torch.std(param.data.view(-1))), round_num)
-                        # name_mean = name + '_mean'
-                        # write_dict[name_mean] = round(float(torch.mean(param.data.view(-1))), round_num)
-                        name_std10 = name + '_std10'
-                        ratio = 0.1
-                        write_dict[name_std10] = round(
-                            float(torch.sum((param.data.view(-1) > - ratio * float(torch.std(param.data.view(-1)))) * (
-                                    param.data.view(-1) < ratio * float(torch.std(param.data.view(-1)))))) / len(
-                                param.data.view(-1)), round_num)
-
-                for name, param in self.model.named_parameters():
-                    if ('gate' in name) and (not 'view' in name):
-                        name = '_'.join([x[:name_num] for x in name.split('.')[1:]])
-                        name_mean = name + '_mean'
-                        write_dict[name_mean] = round(float(torch.mean(param.data.view(-1))), round_num)
-                logger.info(write_dict)
+            self.logger_parameter_info(self.model)
 
     def basic_forward(self, opt, data):
-
         model = self.model_meta.module if isinstance(self.model_meta, DistributedDataParallel) else self.model_meta
 
-        if self.scaler is None:
-            outputs, targets = model(data, opt)
-            loss_dict = model.losses(outputs, targets, opt)
+        with torch.cuda.amp.autocast(enabled=self.scaler is not None):
+            outs = model(data, opt)
+            loss_dict = model.losses(outs, opt)
             losses = sum(loss_dict.values())
-        else:
-            with torch.cuda.amp.autocast():
-                outputs, targets = model(data, opt)
-                loss_dict = model.losses(outputs, targets, opt)
-                losses = sum(loss_dict.values())
 
         self._detect_anomaly(losses, loss_dict)
         return losses, loss_dict
@@ -424,6 +369,38 @@ class SimpleTrainer(TrainerBase):
 
 
         logger.info("************************************")
+    def logger_parameter_info(self, model):
+        with torch.no_grad():
+            write_dict = dict()
+            round_num = 4
+            name_num = 20
+            for name, param in model.named_parameters():  # only update regularizer
+                if 'reg' in name:
+                    name = '_'.join([x[:name_num] for x in name.split('.')[1:]])
+                    name = name + '+'
+                    write_dict[name] = round(float(torch.sum(param.data.view(-1) > 0)) / len(param.data.view(-1)),
+                                             round_num)
+
+            for name, param in model.named_parameters():
+                if ('meta' in name) and ('fc' in name) and ('weight' in name) and (not 'view' in name):
+                    name = '_'.join([x[:name_num] for x in name.split('.')[1:]])
+                    # name_std = name + '_std'
+                    # write_dict[name_std] = round(float(torch.std(param.data.view(-1))), round_num)
+                    # name_mean = name + '_mean'
+                    # write_dict[name_mean] = round(float(torch.mean(param.data.view(-1))), round_num)
+                    name_std10 = name + '_std10'
+                    ratio = 0.1
+                    write_dict[name_std10] = round(
+                        float(torch.sum((param.data.view(-1) > - ratio * float(torch.std(param.data.view(-1)))) * (
+                                param.data.view(-1) < ratio * float(torch.std(param.data.view(-1)))))) / len(
+                            param.data.view(-1)), round_num)
+
+            for name, param in model.named_parameters():
+                if ('gate' in name) and (not 'view' in name):
+                    name = '_'.join([x[:name_num] for x in name.split('.')[1:]])
+                    name_mean = name + '_mean'
+                    write_dict[name_mean] = round(float(torch.mean(param.data.view(-1))), round_num)
+            logger.info(write_dict)
     def meta_learning(self):
 
         # 1. Initial parameter setting (shared layer + domain specific layers)
@@ -732,37 +709,7 @@ class SimpleTrainer(TrainerBase):
                 ))
 
             if cnt_global % (self.meta_learning_parameter['write_period_param']*write_period) == 0:
-                with torch.no_grad():
-                    write_dict = dict()
-                    round_num = 4
-                    name_num = 20
-                    for name, param in self.model_meta.named_parameters():  # only update regularizer
-                        if 'reg' in name:
-                            name = '_'.join([x[:name_num] for x in name.split('.')[1:]])
-                            name = name + '+'
-                            write_dict[name] = round(float(torch.sum(param.data.view(-1) > 0)) / len(param.data.view(-1)), round_num)
-
-                    for name, param in self.model_meta.named_parameters():
-                        if ('meta' in name) and ('fc' in name) and ('weight' in name):
-                            name = '_'.join([x[:name_num] for x in name.split('.')[1:]])
-                            # name_std = name + '_std'
-                            # write_dict[name_std] = round(float(torch.std(param.data.view(-1))), round_num)
-                            # name_mean = name + '_mean'
-                            # write_dict[name_mean] = round(float(torch.mean(param.data.view(-1))), round_num)
-                            name_std10 = name + '_std10'
-                            ratio = 0.1
-                            write_dict[name_std10] = round(float(torch.sum((param.data.view(-1) > - ratio * float(torch.std(param.data.view(-1)))) * (
-                                        param.data.view(-1) < ratio * float(torch.std(param.data.view(-1)))))) / len(
-                                param.data.view(-1)), round_num)
-
-                    for name, param in self.model_meta.named_parameters():
-                        if 'gate' in name:
-                            name = '_'.join([x[:name_num] for x in name.split('.')[1:]])
-                            name_mean = name + '_mean'
-                            write_dict[name_mean] = round(float(torch.mean(param.data.view(-1))), round_num)
-                    logger.info(write_dict)
-
-
+                self.logger_parameter_info(self.model_meta)
 
             if cnt_global in save_iter:
                 idx_save = [i for i, x in enumerate(save_iter) if x == cnt_global][0] + 1

@@ -33,6 +33,8 @@ from fastreid.utils.logger import setup_logger
 import torch.optim as optim
 from . import hooks
 from .train_loop import SimpleTrainer
+# import logging
+# logger = logging.getLogger(__name__)
 
 __all__ = ["default_argument_parser", "default_setup", "DefaultPredictor", "DefaultTrainer"]
 
@@ -156,9 +158,9 @@ class DefaultPredictor:
         with torch.no_grad():  # https://github.com/sphinx-doc/sphinx/issues/4258
             predictions = self.model(inputs)
             # Normalize feature to compute cosine distance
-            pred_feat = F.normalize(predictions)
-            pred_feat = pred_feat.cpu().data
-            return pred_feat
+            features = F.normalize(predictions)
+            features = F.normalize(features).cpu().data
+            return features
 
 
 class DefaultTrainer(SimpleTrainer):
@@ -533,14 +535,14 @@ class DefaultTrainer(SimpleTrainer):
         return build_reid_train_loader(cfg)
 
     @classmethod
-    def build_test_loader(cls, cfg, dataset_name):
+    def build_test_loader(cls, cfg, dataset_name, opt=None):
         """
         Returns:
             iterable
         It now calls :func:`fastreid.data.build_detection_test_loader`.
         Overwrite it if you'd like a different data loader.
         """
-        return build_reid_test_loader(cfg, dataset_name)
+        return build_reid_test_loader(cfg, dataset_name, opt)
 
     @classmethod
     def build_evaluator(cls, cfg, num_query, output_dir=None):
@@ -558,6 +560,16 @@ class DefaultTrainer(SimpleTrainer):
         Returns:
             dict: a dict of result metrics
         """
+
+        gettrace = getattr(sys, 'gettrace', None)
+        if gettrace():
+            print('*' * 100)
+            print('Hmm, Big Debugger is watching me')
+            print('*' * 100)
+
+
+
+
         logger = logging.getLogger(__name__)
         if isinstance(evaluators, DatasetEvaluator):
             evaluators = [evaluators]
@@ -570,23 +582,78 @@ class DefaultTrainer(SimpleTrainer):
         results = OrderedDict()
         for idx, dataset_name in enumerate(cfg.DATASETS.TESTS):
             logger.info("Prepare testing set")
-            data_loader, num_query = cls.build_test_loader(cfg, dataset_name)
-            # When evaluators are passed in as arguments,
-            # implicitly assume that evaluators can be created before data_loader.
-            if evaluators is not None:
-                evaluator = evaluators[idx]
-            else:
-                try:
+            if 'ALL' in dataset_name:
+                report_all = cfg.TEST.REPORT_ALL
+                results_local = OrderedDict()
+
+                if 'VIPER' in dataset_name:
+                    dataset_name_local = 'DG_VIPeR'
+                    if 'only' in dataset_name:
+                        sub_set = 'only_a'
+                    else:
+                        sub_set = 'all'
+                    try:
+                        num_test = int(dataset_name.split('_')[-1])
+                    except:
+                        num_test = 10
+                    sub_type = ['a','b','c','d']
+                    sub_name = [["split_" + str(i+1) + x for i in range(num_test)] for j, x in enumerate(sub_type)]
+                    if sub_set == 'only_a':
+                        sub_name = sub_name[0]
+                    elif sub_set == 'all':
+                        sub_name2 = sub_name
+                        sub_name = []
+                        for i in range(len(sub_name2)):
+                            sub_name.extend(sub_name2[i])
+                elif 'PRID' in dataset_name:
+                    dataset_name_local = 'DG_PRID'
+                    sub_name = [x for x in range(10)]
+                elif 'GRID' in dataset_name:
+                    dataset_name_local = 'DG_GRID'
+                    sub_name = [x for x in range(10)]
+
+
+                for x in sub_name:
+                    logger.info("Subset: {}".format(x))
+                    data_loader, num_query = cls.build_test_loader(cfg, dataset_name_local, opt = x)
                     evaluator = cls.build_evaluator(cfg, num_query)
-                except NotImplementedError:
-                    logger.warn(
-                        "No evaluator found. Use `DefaultTrainer.test(evaluators=)`, "
-                        "or implement its `build_evaluator` method."
-                    )
-                    results[dataset_name] = {}
-                    continue
-            results_i = inference_on_dataset(model, data_loader, evaluator)
-            results[dataset_name] = results_i
+                    results_i = inference_on_dataset(model, data_loader, evaluator, opt=report_all)
+                    if isinstance(x, int):
+                        x = str(x)
+                    if report_all:
+                        results[dataset_name+'_'+x] = results_i
+                    results_local[dataset_name+'_'+x] = results_i
+
+                results_local_average = OrderedDict()
+                for name_global, val_global in results_local.items():
+                    if len(results_local_average) == 0:
+                        for name, val in results_local[name_global].items():
+                            results_local_average[name] = val
+                    else:
+                        for name, val in results_local[name_global].items():
+                            results_local_average[name] += val
+                for name, val in results_local_average.items():
+                    results_local_average[name] /= float(len(results_local))
+                results[dataset_name+'_average'] = results_local_average
+
+            else:
+                data_loader, num_query = cls.build_test_loader(cfg, dataset_name)
+                # When evaluators are passed in as arguments,
+                # implicitly assume that evaluators can be created before data_loader.
+                if evaluators is not None:
+                    evaluator = evaluators[idx]
+                else:
+                    try:
+                        evaluator = cls.build_evaluator(cfg, num_query)
+                    except NotImplementedError:
+                        logger.warn(
+                            "No evaluator found. Use `DefaultTrainer.test(evaluators=)`, "
+                            "or implement its `build_evaluator` method."
+                        )
+                        results[dataset_name] = {}
+                        continue
+                results_i = inference_on_dataset(model, data_loader, evaluator)
+                results[dataset_name] = results_i
 
         if comm.is_main_process():
             assert isinstance(

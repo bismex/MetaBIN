@@ -59,9 +59,9 @@ META:
 MODEL:
   META_ARCHITECTURE: "Metalearning" 
   BACKBONE:
-    WITH_IBN: True 
+    WITH_IBN: False  #  'pretrained/resnet50_ibn_a.pth'
     PRETRAIN: True 
-    PRETRAIN_PATH: 'pretrained/resnet50_ibn_a.pth' 
+    PRETRAIN_PATH: ''
     NORM: "BN" 
   HEADS:
     NAME: "MetalearningHead" 
@@ -77,11 +77,13 @@ MODEL:
 
 DATASETS:
 #  NAMES: ("VeRi_keypoint",)
-  NAMES: ("Market1501",)
-  TESTS: ("Market1501",)
+  NAMES: ("DG_CUHK02", "DG_CUHK03_detected", "DG_Market1501", "DG_DukeMTMC", "DG_CUHK_SYSU",)
+  # "DG_CUHK02", "DG_CUHK03_detected", "DG_Market1501", "DG_DukeMTMC", "DG_CUHK_SYSU", "DG_CUHK03_labeled"
+  TESTS: ("ALL_GRID", "ALL_VIPER_only_10", "ALL_PRID") # DG_VIPeR, Market1501, ALL_VIPER_only_5, ALL_VIPER_5, ALL_PRID, PRID, GRID
 
 DATALOADER:
   NUM_INSTANCE: 4
+  NUM_WORKERS: 4
 
 SOLVER:
   AMP: True 
@@ -95,7 +97,7 @@ SOLVER:
   WARMUP_FACTOR: 0.01
   WARMUP_ITERS: 10
 
-  CHECKPOINT_PERIOD: 20
+  CHECKPOINT_PERIOD: 30
   IMS_PER_BATCH: 64
   WEIGHT_DECAY: 0.0005 
   WEIGHT_DECAY_BIAS: 0.0005 
@@ -105,4 +107,5 @@ SOLVER:
 TEST:
   EVAL_PERIOD: 10
   IMS_PER_BATCH: 128
+  REPORT_ALL: True
 

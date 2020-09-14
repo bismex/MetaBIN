@@ -2,14 +2,20 @@
 <module type="PYTHON_MODULE" version="4">
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
+      <excludeFolder url="file://$MODULE_DIR$/datasets/CUHK-SYSU" />
       <excludeFolder url="file://$MODULE_DIR$/datasets/DukeMTMC-reID" />
+      <excludeFolder url="file://$MODULE_DIR$/datasets/GRID" />
       <excludeFolder url="file://$MODULE_DIR$/datasets/MSMT17_V2" />
       <excludeFolder url="file://$MODULE_DIR$/datasets/Market-1501-v15.09-15" />
       <excludeFolder url="file://$MODULE_DIR$/datasets/Market-1501-v15.09.15" />
       <excludeFolder url="file://$MODULE_DIR$/datasets/VERI-Wild" />
+      <excludeFolder url="file://$MODULE_DIR$/datasets/cuhk02" />
+      <excludeFolder url="file://$MODULE_DIR$/datasets/cuhk03" />
+      <excludeFolder url="file://$MODULE_DIR$/datasets/prid_2011" />
       <excludeFolder url="file://$MODULE_DIR$/datasets/vehicleid" />
       <excludeFolder url="file://$MODULE_DIR$/datasets/veri" />
       <excludeFolder url="file://$MODULE_DIR$/datasets/veri_keypoint" />
+      <excludeFolder url="file://$MODULE_DIR$/datasets/viper" />
     </content>
     <orderEntry type="jdk" jdkName="Python 3.6 (seokeon_reid)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />

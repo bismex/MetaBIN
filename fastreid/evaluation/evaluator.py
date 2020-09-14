@@ -78,7 +78,7 @@ class DatasetEvaluator:
 #         return results
 
 
-def inference_on_dataset(model, data_loader, evaluator):
+def inference_on_dataset(model, data_loader, evaluator, opt=None):
     """
     Run model on the data_loader and evaluate the metrics with evaluator.
     The model will be used in eval mode.
@@ -96,7 +96,8 @@ def inference_on_dataset(model, data_loader, evaluator):
         The return value of `evaluator.evaluate()`
     """
     logger = logging.getLogger(__name__)
-    logger.info("Start inference on {} images".format(len(data_loader.dataset)))
+    if opt == None:
+        logger.info("Start inference on {} images".format(len(data_loader.dataset)))
 
     total = len(data_loader)  # inference data loader must have a fixed length
     evaluator.reset()
@@ -134,18 +135,20 @@ def inference_on_dataset(model, data_loader, evaluator):
     # Measure the time only for this worker (before the synchronization barrier)
     total_time = time.perf_counter() - start_time
     total_time_str = str(datetime.timedelta(seconds=total_time))
-    # NOTE this format is parsed by grep
-    logger.info(
-        "Total inference time: {} ({:.6f} s / batch per device)".format(
-            total_time_str, total_time / (total - num_warmup)
-        )
-    )
     total_compute_time_str = str(datetime.timedelta(seconds=int(total_compute_time)))
-    logger.info(
-        "Total inference pure compute time: {} ({:.6f} s / batch per device)".format(
-            total_compute_time_str, total_compute_time / (total - num_warmup)
+    # NOTE this format is parsed by grep
+
+    if opt == None:
+        logger.info(
+            "Total inference time: {} ({:.6f} s / batch per device)".format(
+                total_time_str, total_time / (total - num_warmup)
+            )
         )
-    )
+        logger.info(
+            "Total inference pure compute time: {} ({:.6f} s / batch per device)".format(
+                total_compute_time_str, total_compute_time / (total - num_warmup)
+            )
+        )
     results = evaluator.evaluate()
     # An evaluator may return None when not in main process.
     # Replace it by an empty dict instead to make it easier for downstream code to handle
