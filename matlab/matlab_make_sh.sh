@@ -1,4 +1,7 @@
-matlab -nodisplay -r "make_sh('Baseline', 'seokeon_torch16', 'python3 ./tools/train_net.py --config-file ./configs/Baseline/', '', 1, 1, 'Baseline/cpu1', ''); make_sh('Baseline', 'seokeon_torch16', 'python3 ./tools/train_net.py --config-file ./configs/Baseline/', '', 2, 1, 'Baseline/cpu2', ''); make_sh('Baseline', 'seokeon_torch16', 'python3 ./tools/train_net.py --config-file ./configs/Baseline/', '--resume', 2, 1, 'Baseline/resume', ''); exit" 
+matlab -nodisplay -r "make_sh('Dataloader', 'seokeon_torch16', 'python3 ./tools/train_net.py --config-file ./configs/Dataloader/', '', 1, 1, 'Dataloader/cpu1', ''); make_sh('Dataloader', 'seokeon_torch16', 'python3 ./tools/train_net.py --config-file ./configs/Dataloader/', '', 3, 1, 'Dataloader/cpu3', ''); make_sh('Dataloader', 'seokeon_torch16', 'python3 ./tools/train_net.py --config-file ./configs/Dataloader/', '', 5, 1, 'Dataloader/cpu5', ''); exit" 
+
+#  make_sh('MetaReg', 'seokeon_torch16', 'python3 ./tools/train_net.py --config-file ./configs/MetaReg/', '--resume', 1, 1, 'MetaReg/resume1', ''); make_sh('MetaReg', 'seokeon_torch16', 'python3 ./tools/train_net.py --config-file ./configs/MetaReg/', '--resume', 3, 1, 'MetaReg/resume3', ''); make_sh('MetaReg', 'seokeon_torch16', 'python3 ./tools/train_net.py --config-file ./configs/MetaReg/', '--resume', 5, 1, 'MetaReg/resume5', '');
+
 #matlab -nodisplay -r "make_sh('METAv4', 'seokeon_torch16', 'python3 ./tools/train_net.py --config-file ./configs/METAv3/', '', 2, 1, 'cpu2', ''); exit" 
 #matlab -nodisplay -r "make_sh('METAv1', 'seokeon_reid', 'python3 ./tools/train_net.py --config-file ./configs/METAv1/', '--resume', 1, 'resume', 'r'); exit" 
 

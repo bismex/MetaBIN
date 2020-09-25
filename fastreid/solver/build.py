@@ -23,18 +23,9 @@ def build_optimizer(cfg, model):
         if "bias" in key:
             lr *= cfg.SOLVER.BIAS_LR_FACTOR
             weight_decay = cfg.SOLVER.WEIGHT_DECAY_BIAS
-        if "reg" in key:
+        if "gate" in key:
             print(key, value.shape)
-            lr *= cfg.META.REGULARIZER.LR_FACTOR
-        if "meta" in key:
-            print(key, value.shape)
-            lr *= cfg.META.MODEL.LR_FACTOR
-        if "GRL" in key:
-            print(key, value.shape)
-            lr *= cfg.META.GRL.LR_FACTOR
-        if "bin_gate" in key:
-            print(key, value.shape)
-            lr *= cfg.META.BIN_GATE.LR_FACTOR
+            lr *= cfg.META.SOLVER.LR_FACTOR.GATE
         params += [{"name": key, "params": [value], "lr": lr, "weight_decay": weight_decay, "freeze": False}]
 
     solver_opt = cfg.SOLVER.OPT

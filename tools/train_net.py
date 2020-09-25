@@ -61,7 +61,6 @@ def setup(args):
     default_setup(cfg, args)
     return cfg
 
-
 def main(args):
     cfg = setup(args)
 
@@ -89,8 +88,7 @@ def main(args):
         return res
 
     trainer = Trainer(cfg)
-    if cfg.META.SOLVER.TRAIN_ORIGINAL:
-        trainer.resume_or_load(resume=args.resume)
+    trainer.resume_or_load(resume=args.resume)
     return trainer.train() # train_loop.py -> train
 
 

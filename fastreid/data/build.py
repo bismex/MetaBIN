@@ -15,34 +15,22 @@ from . import samplers
 from .common import CommDataset
 from .datasets import DATASET_REGISTRY
 from .transforms import build_transforms
+import logging
+logger = logging.getLogger(__name__)
 
 _root = os.getenv("FASTREID_DATASETS", "datasets")
 
 
 def build_reid_train_loader(cfg):
-    train_transforms = build_transforms(cfg, is_train=True)
 
-    train_set_all = []
-    train_items = list()
-    cnt = 0
-    for d in cfg.DATASETS.NAMES:
-        dataset = DATASET_REGISTRY.get(d)(root=_root, combineall=cfg.DATASETS.COMBINEALL)
-        if comm.is_main_process():
-            dataset.show_train()
-        if cfg.META.DATA.NAMES == 'DG':
-            if len(dataset.train[0]) < 4: # add domain label
-                for i, x in enumerate(dataset.train):
-                    add_info = {}  # dictionary
-                    add_info['domains'] = int(cnt)
-                    dataset.train[i] = list(dataset.train[i])
-                    dataset.train[i].append(add_info)
-                    dataset.train[i] = tuple(dataset.train[i])
-            cnt += 1
-            train_set_all.append(dataset.train)
-        train_items.extend(dataset.train)
+    cfg = cfg.clone()
+    frozen = cfg.is_frozen()
+    cfg.defrost()
 
-    train_set = CommDataset(train_items, train_transforms, relabel=True)
-
+    individual_flag_ori = cfg.DATALOADER.INDIVIDUAL
+    individual_flag_meta = cfg.META.DATA.INDIVIDUAL
+    if cfg.META.DATA.NAMES == "":
+        individual_flag_meta = False
     gettrace = getattr(sys, 'gettrace', None)
     if gettrace():
         print('*'*100)
@@ -52,29 +40,67 @@ def build_reid_train_loader(cfg):
     else:
         num_workers = cfg.DATALOADER.NUM_WORKERS
 
-    train_loader = make_sampler(train_set = train_set,
-                                num_batch = cfg.SOLVER.IMS_PER_BATCH,
-                                num_instance = cfg.DATALOADER.NUM_INSTANCE,
-                                num_workers = num_workers,
-                                mini_batch_size = cfg.SOLVER.IMS_PER_BATCH // comm.get_world_size(),
-                                drop_last = True,
-                                flag1 = cfg.DATALOADER.PK_SAMPLER,
-                                flag2 = cfg.DATALOADER.NAIVE_WAY)
+    train_transforms = build_transforms(cfg, is_train=True)
+    train_set_all = []
+    train_items = list()
+    domain_idx = 0
+    for d in cfg.DATASETS.NAMES:
+        dataset = DATASET_REGISTRY.get(d)(root=_root, combineall=cfg.DATASETS.COMBINEALL)
+        if comm.is_main_process():
+            dataset.show_train()
+        if len(dataset.train[0]) < 4:
+            for i, x in enumerate(dataset.train):
+                add_info = {}  # dictionary
+                add_info['domains'] = int(domain_idx)
+                dataset.train[i] = list(dataset.train[i])
+                dataset.train[i].append(add_info)
+                dataset.train[i] = tuple(dataset.train[i])
+        domain_idx += 1
+        train_items.extend(dataset.train)
+        if individual_flag_ori or individual_flag_meta: # individual set
+            train_set_all.append(dataset.train)
 
-    train_loader_add = {}
-    if not cfg.META.DATA.NAMES is "": # order of direction (0-> clockwise, 1,7,5,6,0,3,2,4)
+    num_domains = domain_idx
+    cfg.META.DATA.NUM_DOMAINS = num_domains
 
-        if 'keypoint' in cfg.META.DATA.NAMES:
-            cfg, train_set_all = make_keypoint_data(cfg = cfg,
-                                                    data_name = cfg.META.DATA.NAMES,
-                                                    train_items = train_items)
+    if cfg.DATALOADER.NAIVE_WAY:
+        logger.info('**[dataloader info: random domain shuffle]**')
+    else:
+        logger.info('**[dataloader info: uniform domain]**')
+        logger.info('**[The batch size should be a multiple of the number of domains.]**')
+        assert (cfg.SOLVER.IMS_PER_BATCH % (num_domains*cfg.DATALOADER.NUM_INSTANCE) == 0), \
+            "cfg.SOLVER.IMS_PER_BATCH should be a multiple of (num_domain x num_instance)"
+        assert (cfg.META.DATA.MTRAIN_MINI_BATCH % (num_domains*cfg.META.DATA.MTRAIN_NUM_INSTANCE) == 0), \
+            "cfg.META.DATA.MTRAIN_MINI_BATCH should be a multiple of (num_domain x num_instance)"
+        assert (cfg.META.DATA.MTEST_MINI_BATCH % (num_domains*cfg.META.DATA.MTEST_NUM_INSTANCE) == 0), \
+            "cfg.META.DATA.MTEST_MINI_BATCH should be a multiple of (num_domain x num_instance)"
+
+    if individual_flag_ori:
+        cfg.SOLVER.IMS_PER_BATCH //= num_domains
+    if individual_flag_meta:
+        cfg.META.DATA.MTRAIN_MINI_BATCH //= num_domains
+        cfg.META.DATA.MTEST_MINI_BATCH //= num_domains
+
+
+    if 'keypoint' in cfg.META.DATA.NAMES:
+        cfg, train_set_all = make_keypoint_data(cfg = cfg,
+                                                data_name = cfg.META.DATA.NAMES,
+                                                train_items = train_items)
+
+    train_set = CommDataset(train_items, train_transforms, relabel=True)
+
+
+
+    if individual_flag_ori or individual_flag_meta:
+        relabel_flag = False
+        if individual_flag_meta:
+            relabel_flag = cfg.META.DATA.RELABEL
 
         for i, x in enumerate(train_set_all):
-            train_set_all[i] = CommDataset(x, train_transforms, relabel=cfg.META.DATA.RELABEL)
-            if not cfg.META.DATA.RELABEL:
+            train_set_all[i] = CommDataset(x, train_transforms, relabel=relabel_flag)
+            if not relabel_flag:
                 train_set_all[i].relabel = True
                 train_set_all[i].pid_dict = train_set.pid_dict
-
         # Check number of data
         cnt_data = 0
         for x in train_set_all:
@@ -82,40 +108,94 @@ def build_reid_train_loader(cfg):
         if cnt_data != len(train_set.img_items):
             print("data loading error, check build.py")
 
-
+    if individual_flag_ori:
+        train_loader = []
         if len(train_set_all) > 0:
-            train_loader_add['init'] = []
-            train_loader_add['mtrain'] = []
-            train_loader_add['mtest'] = []
             for i, x in enumerate(train_set_all):
-                train_loader_add['init'].append(make_sampler(train_set=x,
-                                                             num_batch=cfg.META.SOLVER.INIT.IMS_PER_BATCH,
-                                                             num_instance=cfg.META.SOLVER.INIT.NUM_INSTANCE,
-                                                             num_workers=num_workers,
-                                                             mini_batch_size=cfg.META.SOLVER.INIT.IMS_PER_BATCH
-                                                                             // comm.get_world_size(),
-                                                             drop_last=cfg.META.DATA.DROP_LAST,
-                                                             flag1=cfg.DATALOADER.PK_SAMPLER,
-                                                             flag2=cfg.DATALOADER.NAIVE_WAY))
-                train_loader_add['mtrain'].append(make_sampler(train_set=x,
-                                                               num_batch=cfg.META.SOLVER.MTRAIN.IMS_PER_BATCH,
-                                                               num_instance=cfg.META.SOLVER.MTRAIN.NUM_INSTANCE,
-                                                               num_workers=num_workers,
-                                                               mini_batch_size=cfg.META.SOLVER.MTRAIN.IMS_PER_BATCH
-                                                                               // comm.get_world_size(),
-                                                               drop_last=cfg.META.DATA.DROP_LAST,
-                                                               flag1=cfg.DATALOADER.PK_SAMPLER,
-                                                               flag2=cfg.DATALOADER.NAIVE_WAY))
-                train_loader_add['mtest'].append(make_sampler(train_set=x,
-                                                              num_batch=cfg.META.SOLVER.MTEST.IMS_PER_BATCH,
-                                                              num_instance=cfg.META.SOLVER.MTEST.NUM_INSTANCE,
-                                                              num_workers=num_workers,
-                                                              mini_batch_size=cfg.META.SOLVER.MTEST.IMS_PER_BATCH
-                                                                              // comm.get_world_size(),
-                                                              drop_last=cfg.META.DATA.DROP_LAST,
-                                                              flag1=cfg.DATALOADER.PK_SAMPLER,
-                                                              flag2=cfg.DATALOADER.NAIVE_WAY))
+                train_loader.append(make_sampler(
+                    train_set=x,
+                    num_batch=cfg.SOLVER.IMS_PER_BATCH,
+                    num_instance=cfg.DATALOADER.NUM_INSTANCE,
+                    num_workers=num_workers,
+                    mini_batch_size=cfg.SOLVER.IMS_PER_BATCH // comm.get_world_size(),
+                    drop_last=cfg.DATALOADER.DROP_LAST,
+                    flag1=cfg.DATALOADER.NAIVE_WAY,
+                    flag2=cfg.DATALOADER.DELETE_REM))
+    else:
+        train_loader = make_sampler(
+            train_set=train_set,
+            num_batch=cfg.SOLVER.IMS_PER_BATCH,
+            num_instance=cfg.DATALOADER.NUM_INSTANCE,
+            num_workers=num_workers,
+            mini_batch_size=cfg.SOLVER.IMS_PER_BATCH // comm.get_world_size(),
+            drop_last=cfg.DATALOADER.DROP_LAST,
+            flag1=cfg.DATALOADER.NAIVE_WAY,
+            flag2=cfg.DATALOADER.DELETE_REM)
 
+    train_loader_add = {}
+    train_loader_add['mtrain'] = None
+    train_loader_add['mtest'] = None
+    if cfg.META.DATA.NAMES != "":
+        if cfg.META.DATA.LOADER_FLAG == 'each': # "each": meta-init / meta-train / meta-test
+            make_mtrain = True
+            make_mtest = True
+        elif cfg.META.DATA.LOADER_FLAG == 'diff': # "diff": meta-init / meta-final
+            make_mtrain = True
+            make_mtest = False
+        elif cfg.META.DATA.LOADER_FLAG == 'same': # "same": meta-init
+            make_mtrain = False
+            make_mtest = False
+        else:
+            print('error in cfg.META.DATA.LOADER_FLAG')
+
+        train_loader_add['mtrain'] = [] if make_mtrain else None
+        train_loader_add['mtest'] = [] if make_mtest else None
+
+        if individual_flag_meta:
+            for i, x in enumerate(train_set_all):
+                if make_mtrain:
+                    train_loader_add['mtrain'].append(make_sampler(
+                        train_set=x,
+                        num_batch=cfg.META.DATA.MTRAIN_MINI_BATCH,
+                        num_instance=cfg.META.DATA.MTRAIN_NUM_INSTANCE,
+                        num_workers=num_workers,
+                        mini_batch_size=cfg.META.DATA.MTRAIN_MINI_BATCH // comm.get_world_size(),
+                        drop_last=cfg.META.DATA.DROP_LAST,
+                        flag1=cfg.META.DATA.NAIVE_WAY,
+                        flag2=cfg.META.DATA.DELETE_REM))
+                if make_mtest:
+                    train_loader_add['mtest'].append(make_sampler(
+                        train_set=x,
+                        num_batch=cfg.META.DATA.MTEST_MINI_BATCH,
+                        num_instance=cfg.META.DATA.MTEST_NUM_INSTANCE,
+                        num_workers=num_workers,
+                        mini_batch_size=cfg.META.DATA.MTEST_MINI_BATCH // comm.get_world_size(),
+                        drop_last=cfg.META.DATA.DROP_LAST,
+                        flag1=cfg.META.DATA.NAIVE_WAY,
+                        flag2=cfg.META.DATA.DELETE_REM))
+        else:
+            if make_mtrain:
+                train_loader_add['mtrain'] = make_sampler(
+                    train_set=train_set,
+                    num_batch=cfg.META.DATA.MTRAIN_MINI_BATCH,
+                    num_instance=cfg.META.DATA.MTRAIN_NUM_INSTANCE,
+                    num_workers=num_workers,
+                    mini_batch_size=cfg.META.DATA.MTRAIN_MINI_BATCH // comm.get_world_size(),
+                    drop_last=cfg.META.DATA.DROP_LAST,
+                    flag1=cfg.META.DATA.NAIVE_WAY,
+                    flag2=cfg.META.DATA.DELETE_REM)
+            if make_mtest:
+                train_loader_add['mtest'] = make_sampler(
+                    train_set=train_set,
+                    num_batch=cfg.META.DATA.MTEST_MINI_BATCH,
+                    num_instance=cfg.META.DATA.MTEST_NUM_INSTANCE,
+                    num_workers=num_workers,
+                    mini_batch_size=cfg.META.DATA.MTEST_MINI_BATCH // comm.get_world_size(),
+                    drop_last=cfg.META.DATA.DROP_LAST,
+                    flag1=cfg.META.DATA.NAIVE_WAY,
+                    flag2=cfg.META.DATA.DELETE_REM)
+
+        if frozen: cfg.freeze()
 
     return train_loader, train_loader_add, cfg
 
@@ -182,16 +262,15 @@ def fast_batch_collator(batched_inputs):
 
 def make_sampler(train_set, num_batch, num_instance, num_workers,
                  mini_batch_size, drop_last=True, flag1=True, flag2=True):
-    if flag1:
-        if flag2:
-            data_sampler = samplers.NaiveIdentitySampler(train_set.img_items,
-                                                         num_batch, num_instance)
 
-        else:
-            data_sampler = samplers.BalancedIdentitySampler(train_set.img_items,
-                                                            num_batch, num_instance)
+    if flag1:
+        data_sampler = samplers.NaiveIdentitySampler(train_set.img_items,
+                                                     num_batch, num_instance, flag2)
     else:
-        data_sampler = samplers.TrainingSampler(len(train_set))
+        data_sampler = samplers.DomainSuffleSampler(train_set.img_items,
+                                                     num_batch, num_instance, flag2)
+    # data_sampler = samplers.BalancedIdentitySampler(train_set.img_items,num_batch, num_instance) # other method
+    # data_sampler = samplers.TrainingSampler(len(train_set)) # PK sampler
     batch_sampler = torch.utils.data.sampler.BatchSampler(data_sampler, mini_batch_size, drop_last)
 
     train_loader = torch.utils.data.DataLoader(

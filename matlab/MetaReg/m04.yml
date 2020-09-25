@@ -1,0 +1,124 @@
+
+INPUT:
+  SIZE_TRAIN: [256, 128] # vehicle: [256,256]
+  SIZE_TEST: [256, 128] # vehicle: [256,256]
+  DO_AUTOAUG: False
+  CJ:
+    ENABLED: False
+  DO_AUGMIX: False
+  RPT:
+    ENABLED: False #
+  REA:
+    ENABLED: False #
+
+
+META:
+  BOTTLENECK:
+    DO_IT: False #
+    REDUCTION_DIM: 1024 
+    NORM: True
+  DATA:
+    NAMES: "DG" # 'VeRi_keypoint_each_4', 'DG'
+    NUM_DOMAINS: 5
+  REGULARIZER:
+    LR_FACTOR: 10.0
+    DO_IT: True # No reg
+  MODEL:
+    LR_FACTOR: 1.0
+    SPLIT_LAYER: ('classifier',) # No Meta
+  SOLVER:
+    INIT:
+      IMS_PER_BATCH: 64
+      NUM_INSTANCE: 4
+      MAX_ITER: 0
+      INNER_LOOP: 1 # meta-init
+      OUTER_LOOP: 20 # meta-train/test/optimization
+    MTRAIN:
+      IMS_PER_BATCH: 64
+      NUM_INSTANCE: 4
+      INNER_LOOP: 1 # meta-train inner loop
+      INNER_LOOP_TYPE: 'same'
+      NUM_DOMAIN: 3
+    MTEST:
+      IMS_PER_BATCH: 64
+      NUM_INSTANCE: 4
+      ONLY_ONE_DOMAIN: False
+    FINAL:
+      MAX_ITER: 20
+      STEPS: [10,15]
+      WARMUP_ITERS: 5
+      INITIALIZE_CONV_STATE_META: 'pretrained'
+      INITIALIZE_CONV_STATE_ORI: 'pretrained'
+      INITIALIZE_CONV: True
+      INITIALIZE_FC: True
+      DETAIL_MODE: False
+      WEIGHT_LOADER: None
+      WEIGHT_FOLDER: None
+      SAVE_META_PARAM: True
+    WRITE_PERIOD: 1
+    TRAIN_ORIGINAL: True
+    SYNC: True
+  LOSS:
+    META_REG_WEIGHT: 0.001
+    ORI_REG_WEIGHT: 0.01
+    INIT_NAME: ("CrossEntropyLoss", )
+    MTRAIN_NAME: ("CrossEntropyLoss", "Reg_classifier",)
+    MTEST_NAME: ("CrossEntropyLoss", )
+
+
+MODEL:
+  META_ARCHITECTURE: "Metalearning"
+  BACKBONE:
+    WITH_IBN: False  #  'pretrained/resnet50_ibn_a.pth'
+    WITH_NL: False
+    PRETRAIN: True
+    PRETRAIN_PATH: ''
+    NORM: "BN"
+  HEADS:
+    NAME: "MetalearningHead"
+    POOL_LAYER: "fastavgpool" # 'fastavgpool', 'avgpool', 'maxpool', 'gempoolP', 'gempool', 'avgmaxpool', 'clipavgpool', 'identity'
+    BT_NORM: "BN"
+    NORM: "BN"
+    CLS_LAYER: "linear" # 'linear', 'arcSoftmax(x)', 'circleSoftmax', 'amSoftmax(poor)'
+    NECK_FEAT: "before"  # before, after
+  LOSSES:
+    CE:
+      EPSILON: 0.1 # 0, 0.1
+    TRI:
+      HARD_MINING: True
+      MARGIN: 0.3 # vehicle: 0.0
+    NAME: ("CrossEntropyLoss", "Reg_classifier",) # "CrossEntropyLoss", "TripletLoss","CircleLoss"
+
+DATASETS:
+  NAMES: ("DG_CUHK02", "DG_CUHK03_detected", "DG_Market1501", "DG_DukeMTMC", "DG_CUHK_SYSU",)
+  # "DG_CUHK02", "DG_CUHK03_detected", "DG_Market1501", "DG_DukeMTMC", "DG_CUHK_SYSU", "DG_CUHK03_labeled"
+  TESTS: ("ALL_GRID", "ALL_VIPER_only_10", "ALL_PRID") # DG_VIPeR, Market1501, ALL_VIPER_only_5, ALL_VIPER_5, ALL_PRID, PRID, GRID
+
+DATALOADER:
+  NUM_INSTANCE: 4
+  NUM_WORKERS: 3
+
+SOLVER:
+  AMP: True
+  OPT: "SGD" # SGD
+  BASE_LR: 0.01 # 0.01
+  ETA_MIN_LR: 7.7e-5
+
+  MAX_ITER: 100 # vehicle: 100
+  STEPS: [40, 70] # vehicle: [40, 70]
+
+  WARMUP_FACTOR: 0.01
+  WARMUP_ITERS: 10
+
+  CHECKPOINT_PERIOD: 30
+  IMS_PER_BATCH: 64
+  WEIGHT_DECAY: 0.0005
+  WEIGHT_DECAY_BIAS: 0.0005
+  WRITE_PERIOD: 50
+  MOMENTUM: 0.9
+
+TEST:
+  EVAL_PERIOD: 10
+  IMS_PER_BATCH: 128
+  REPORT_ALL: True
+

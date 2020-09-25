@@ -6,8 +6,6 @@
 
 import torch
 from torch import nn
-
-from fastreid.layers import GeneralizedMeanPoolingP, AdaptiveAvgMaxPool2d, FastGlobalAvgPool2d
 from fastreid.modeling.backbones import build_backbone
 from fastreid.modeling.heads import build_reid_heads
 from fastreid.modeling.losses import *
@@ -37,9 +35,9 @@ class Metalearning(nn.Module):
     def device(self):
         return self.pixel_mean.device
 
-    def forward(self, batched_inputs, opt = ''):
+    def forward(self, batched_inputs, opt = None):
         images = self.preprocess_image(batched_inputs)
-        features = self.backbone(images)
+        features = self.backbone(images, opt)
 
         if self.training:
             assert "targets" in batched_inputs, "Person ID annotation are missing in training!"
@@ -69,12 +67,7 @@ class Metalearning(nn.Module):
         # images = batched_inputs
         images.sub_(self.pixel_mean).div_(self.pixel_std)
         return images
-
-    def losses(self, outs, opt = ''):
-        r"""
-        Compute loss from modeling's outputs, the loss function input arguments
-        must be the same as the outputs of the model forwarding.
-        """
+    def losses(self, outs, opt = None):
 
         outputs           = outs["outputs"]
         gt_labels         = outs["targets"]
@@ -85,19 +78,7 @@ class Metalearning(nn.Module):
 
         loss_names = opt['loss']
         loss_dict = {}
-        if self._cfg['META']['GRL']['DO_IT']:
-            gt_domains = outs['domains']
-            dom_outputs = outputs['dom_outputs']
-            loss_dict['loss_dom'] = self._cfg['META']['GRL']['WEIGHT'] * \
-                                    cross_entropy_loss(
-                                        dom_outputs,
-                                        gt_domains,
-                                        self._cfg.MODEL.LOSSES.CE.EPSILON,
-                                        self._cfg.MODEL.LOSSES.CE.ALPHA,
-                                    ) * self._cfg.MODEL.LOSSES.CE.SCALE
-
-        # Log prediction accuracy
-        log_accuracy(pred_class_logits, gt_labels)
+        log_accuracy(pred_class_logits, gt_labels) # Log prediction accuracy
 
         if "CrossEntropyLoss" in loss_names:
             loss_dict['loss_cls'] = cross_entropy_loss(
@@ -123,51 +104,5 @@ class Metalearning(nn.Module):
                 self._cfg.MODEL.LOSSES.CIRCLE.MARGIN,
                 self._cfg.MODEL.LOSSES.CIRCLE.ALPHA,
             ) * self._cfg.MODEL.LOSSES.CIRCLE.SCALE
-
-
-        # Reg loss
-        if not opt == '':
-            if opt['original_learning'] and ("Reg_bottleneck" in loss_names):
-                model_w = self.heads.bottleneck.fc.weight
-                loss_dict['loss_bottleneck_reg'] = self._cfg.META.LOSS.ORI_REG_WEIGHT * \
-                                                   self.heads.bottleneck_reg(torch.abs(torch.flatten(model_w)))[0]
-                # print(self.heads.bottleneck_reg.weight[0])
-            elif "Reg_bottleneck" in loss_names:
-                if self.heads.bottleneck_meta_learning:
-                    if opt['param_update']:
-                        flag_run = False
-                        for name, param in opt['new_param'].items():
-                            if 'bottleneck_meta' in name:
-                                model_w = param
-                                flag_run = True
-                                break
-                        if not flag_run:
-                            model_w = self.heads.bottleneck_meta['domain{}'.format(opt['domain_idx'])].fc.weight
-                    else:
-                        model_w = self.heads.bottleneck_meta['domain{}'.format(opt['domain_idx'])].fc.weight
-
-                    loss_dict['loss_bottleneck_reg'] = self._cfg.META.LOSS.META_REG_WEIGHT * \
-                                                       self.heads.bottleneck_reg(torch.abs(torch.flatten(model_w)))[0]
-
-            if opt['original_learning'] and ("Reg_classifier" in loss_names):
-                model_w = self.heads.classifier.weight
-                loss_dict['loss_classifier_reg'] = self._cfg.META.LOSS.ORI_REG_WEIGHT * \
-                                                   self.heads.classifier_reg(torch.abs(torch.flatten(model_w)))[0]
-            elif "Reg_classifier" in loss_names:
-                if self.heads.classifier_meta_learning:
-                    if opt['param_update']:
-                        flag_run = False
-                        for name, param in opt['new_param'].items():
-                            if 'classifier_meta' in name:
-                                model_w = param
-                                flag_run = True
-                                break
-                        if not flag_run:
-                            model_w = self.heads.classifier_meta['domain{}'.format(opt['domain_idx'])].weight
-                    else:
-                        model_w = self.heads.classifier_meta['domain{}'.format(opt['domain_idx'])].weight
-
-                    loss_dict['loss_classifier_reg'] = self._cfg.META.LOSS.META_REG_WEIGHT * \
-                                                       self.heads.classifier_reg(torch.abs(torch.flatten(model_w)))[0]
 
         return loss_dict

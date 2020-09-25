@@ -22,102 +22,70 @@ _C = CN()
 # META learning
 # -----------------------------------------------------------------------------
 _C.META = CN()
+
 _C.META.BOTTLENECK = CN()
-_C.META.BOTTLENECK.DO_IT = True
+_C.META.BOTTLENECK.DO_IT = False # bottleneck layer
 _C.META.BOTTLENECK.REDUCTION_DIM = 1024
-_C.META.BOTTLENECK.NORM = False
-_C.META.GRL = CN()
-_C.META.GRL.DO_IT = False
-_C.META.GRL.LOCATION = "after" # 'before' / 'after'
-_C.META.GRL.GAMMA = 10
-_C.META.GRL.WEIGHT = 1.0
-_C.META.GRL.LR_FACTOR = 1.0
+_C.META.BOTTLENECK.NORM = True # norm after bottleneck layer
+
 _C.META.DATA = CN()
-_C.META.DATA.NAMES = "VeRi_keypoint_each_4"
-_C.META.DATA.NUM_DOMAINS = 4
-_C.META.DATA.RELABEL = False
+_C.META.DATA.NAMES = "DG" # 'VeRi_keypoint_each_4', 'DG'
+_C.META.DATA.LOADER_FLAG = 'diff' # "each"(3), "diff"(2), "same"(1)
+# "each": meta-init / meta-train / meta-test
+# "diff": meta-init / meta-final
+# "same": meta-init
+_C.META.DATA.NUM_DOMAINS = 5 # don't care, automatically changed
+_C.META.DATA.RELABEL = False # False-> num_classes is shared considering total numbers
+
+# enable when LOADER_FLAG is 'each' or 'diff'
+_C.META.DATA.NAIVE_WAY = False # True-> random, False-> same domain
+_C.META.DATA.DELETE_REM = False # False -> more images
+_C.META.DATA.INDIVIDUAL = False # True-> split dataloader (high memory requirements)
 _C.META.DATA.DROP_LAST = True
 
-_C.META.REGULARIZER = CN()
-_C.META.REGULARIZER.DO_IT = True
-_C.META.REGULARIZER.LR_FACTOR = 10.0 # including "reg", and check weight decay
+_C.META.DATA.MTRAIN_MINI_BATCH = 80 # should be a multiply of num_domain x num_instance
+_C.META.DATA.MTRAIN_NUM_INSTANCE = 4
+_C.META.DATA.MTEST_MINI_BATCH = 80 # should be a multiply of num_domain x num_instance
+_C.META.DATA.MTEST_NUM_INSTANCE = 4
+
 _C.META.MODEL = CN()
-_C.META.MODEL.LR_FACTOR = 1.0 # including "meta"
-# _C.META.MODEL.SPLIT_LAYER = ("conv1","conv2","conv3","conv4","aver_pool","bottleneck","last_fc")
-_C.META.MODEL.SPLIT_LAYER = ("bottleneck",) # "bottleneck","classifier","bnneck","pooling",
-_C.META.MODEL.SAME_NUM_CE = False # operate when SPLIT classifier is True => True -> In META-test, CE does not work
-# _C.META.MODEL.LEARNABLE_LAYER = ("",) # "bnneck","pooling", do not duplicate with SPLIT_LAYER
-# _C.META.MODEL.POOLING_REG_CONSTRAINT = 'free' # 'free', 'lower_bound', 'both_bound'
-# _C.META.MODEL.POOLING_WEIGHT_CONSTRAINT = 'free' # 'spatial', 'channel', 'sc'
-# _C.META.MODEL.BN_REG_CONSTRAINT = 'free' # 'free', 'lower_bound', 'both_bound'
+_C.META.MODEL.META_UPDATE_LAYER = ("bottleneck",) # "bottleneck","classifier","bnneck","pooling",
+_C.META.MODEL.META_COMPUTE_LAYER = ("bottleneck",) # "bottleneck","classifier","bnneck","pooling",
 
 _C.META.SOLVER = CN()
+_C.META.SOLVER.LR_FACTOR = CN()
+_C.META.SOLVER.LR_FACTOR.GATE = 1.0
+_C.META.SOLVER.LR_FACTOR.META_UPDATE = 1.0
+
 _C.META.SOLVER.INIT = CN()
-
-_C.META.SOLVER.INIT.MAX_ITER = 0
-_C.META.SOLVER.INIT.SCHED = 'WarmupMultiStepLR'
-_C.META.SOLVER.INIT.GAMMA = 0.1
-_C.META.SOLVER.INIT.STEPS = [20, 40]
-_C.META.SOLVER.INIT.WARMUP_ITERS = 10
-
-_C.META.SOLVER.INIT.IMS_PER_BATCH = 64
-_C.META.SOLVER.INIT.NUM_INSTANCE = 4
-_C.META.SOLVER.INIT.INNER_LOOP = 1
-_C.META.SOLVER.INIT.OUTER_LOOP = 5
+_C.META.SOLVER.INIT.INNER_LOOP = 1 # basic init training depends on total iteration
+_C.META.SOLVER.INIT.OUTER_LOOP = 5 # meta-training
+_C.META.SOLVER.INIT.TYPE_RUNNING_STATS = "general" # "general", "hold", "eval"
 
 _C.META.SOLVER.MTRAIN = CN()
-_C.META.SOLVER.MTRAIN.IMS_PER_BATCH = 64
-_C.META.SOLVER.MTRAIN.NUM_INSTANCE = 4
-_C.META.SOLVER.MTRAIN.INNER_LOOP = 1 # not working
-_C.META.SOLVER.MTRAIN.INNER_LOOP_TYPE = 'same' # same: update w/o step, diff: step and update
-_C.META.SOLVER.MTRAIN.NUM_DOMAIN = 1
+_C.META.SOLVER.MTRAIN.INNER_LOOP = 1 # inner loop in meta-train
+_C.META.SOLVER.MTRAIN.SHUFFLE_DOMAIN = False # True->shuffle domain when outerloop
+_C.META.SOLVER.MTRAIN.SECOND_ORDER = True # second order
+_C.META.SOLVER.MTRAIN.NUM_DOMAIN = 3
+_C.META.SOLVER.MTRAIN.FREEZE_GRAD_META = True # freeze gradient_requires w/o update and conpute parameters
+_C.META.SOLVER.MTRAIN.ALLOW_UNUSED = False # False-> MLDG, True->MAML
+_C.META.SOLVER.MTRAIN.BEFORE_ZERO_GRAD = True # False-> MLDG, True->MAML
+_C.META.SOLVER.MTRAIN.TYPE_RUNNING_STATS = "general" # "general", "hold", "eval"
 
 _C.META.SOLVER.MTEST = CN()
-_C.META.SOLVER.MTEST.IMS_PER_BATCH = 64
-_C.META.SOLVER.MTEST.NUM_INSTANCE = 4
-_C.META.SOLVER.MTEST.ONLY_ONE_DOMAIN = False # True: only batch IMG_PER_BATCH, False: batch*=(num_view-num_domain)
+_C.META.SOLVER.MTEST.ONLY_ONE_DOMAIN = False # True-> only use one domain in meta-test
+_C.META.SOLVER.MTEST.TYPE_RUNNING_STATS = "general" # "general", "hold", "eval"
 
-_C.META.SOLVER.FINAL = CN()
-
-_C.META.SOLVER.FINAL.MAX_ITER = 60 # based on meta-test set
-_C.META.SOLVER.FINAL.SCHED = 'WarmupMultiStepLR'
-# _C.META.SOLVER.FINAL.SCHED = 'constant'
-_C.META.SOLVER.FINAL.GAMMA = 0.1
-_C.META.SOLVER.FINAL.STEPS = [20, 40]
-_C.META.SOLVER.FINAL.WARMUP_ITERS = 10
-
-_C.META.SOLVER.FINAL.INITIALIZE_CONV_STATE_META = 'pretrained' # pretrained / scratch
-_C.META.SOLVER.FINAL.INITIALIZE_CONV_STATE_ORI = 'pretrained' # pretrained / scratch
-_C.META.SOLVER.FINAL.INITIALIZE_CONV = True # False: load meta conv layers / true: choose state ORI
-_C.META.SOLVER.FINAL.INITIALIZE_FC = True # False: load meta fc-layers / true: weight initialization (remain ORI)
-_C.META.SOLVER.FINAL.DETAIL_MODE = False
-_C.META.SOLVER.FINAL.WEIGHT_LOADER = None # if exists, proceed ori-learning
-_C.META.SOLVER.FINAL.WEIGHT_FOLDER = None # if exists, proceed ori-learning
-_C.META.SOLVER.FINAL.SAVE_META_PARAM = True
-_C.META.SOLVER.TRAIN_ORIGINAL = True
-_C.META.SOLVER.SYNC = True
-_C.META.SOLVER.WRITE_PERIOD = 20
-_C.META.SOLVER.WRITE_PERIOD_PARAM = 5
-
-_C.META.SOLVER.BIN_GATE = CN()
-_C.META.SOLVER.BIN_GATE.LR_FACTOR = 100.0
+_C.META.SOLVER.SYNC = True # True-> sync
+_C.META.SOLVER.DETAIL_MODE = False # True-> print detail info
+_C.META.SOLVER.STOP_GRADIENT = False
+_C.META.SOLVER.MANUAL_ZERO_GRAD = True # True-> optimizer.zero_grad & weight.grad = None
 
 _C.META.LOSS = CN()
-_C.META.LOSS.COMBINED = False
-_C.META.LOSS.META_REG_WEIGHT = 0.001
-_C.META.LOSS.ORI_REG_WEIGHT = 0.001
-_C.META.LOSS.INIT_NAME = ("CrossEntropyLoss", "TripletLoss",)
-_C.META.LOSS.MTRAIN_NAME = ("CrossEntropyLoss", "TripletLoss", "Reg_bottleneck", "Reg_classifier",)
+_C.META.LOSS.COMBINED = False # True: Mtotal = Mtrain + Mtest
+_C.META.LOSS.WEIGHT = 1.0 # w * MTRAIN + MTEST (when combined)
+_C.META.LOSS.MTRAIN_NAME = ("CrossEntropyLoss", "TripletLoss",)
 _C.META.LOSS.MTEST_NAME = ("CrossEntropyLoss", "TripletLoss",)
-# _C.META.LOSS.INIT_NAME = ("TripletLoss",)
-# _C.META.LOSS.MTRAIN_NAME = ("TripletLoss", "Reg",)
-# _C.META.LOSS.MTEST_NAME = ("TripletLoss", )
-
-
-
-
-
-
 
 # -----------------------------------------------------------------------------
 # MODEL
@@ -126,7 +94,6 @@ _C.MODEL = CN()
 _C.MODEL.DEVICE = "cuda"
 _C.MODEL.META_ARCHITECTURE = 'Baseline'
 _C.MODEL.FREEZE_LAYERS = ['']
-
 
 
 # ---------------------------------------------------------------------------- #
@@ -139,8 +106,6 @@ _C.MODEL.BACKBONE.DEPTH = 50
 # RegNet volume
 _C.MODEL.BACKBONE.VOLUME = "800y"
 _C.MODEL.BACKBONE.LAST_STRIDE = 1
-# Normalization method for the convolution layers.
-_C.MODEL.BACKBONE.NORM = "BN"
 # Mini-batch split of Ghost BN
 _C.MODEL.BACKBONE.NORM_SPLIT = 1
 # If use IBN block in backbone
@@ -163,13 +128,8 @@ _C.MODEL.HEADS = CN()
 _C.MODEL.HEADS.NAME = "BNneckHead"
 
 # Normalization method for the convolution layers.
-# _C.MODEL.HEADS.NORM = "BN"
-_C.MODEL.HEADS.NORM = "BN"
-_C.MODEL.HEADS.BT_NORM = "BN"
 # Mini-batch split of Ghost BN
 _C.MODEL.HEADS.NORM_SPLIT = 1
-# Number of identity
-_C.MODEL.HEADS.NORM_INIT_KAIMING = True
 # Number of identity
 _C.MODEL.HEADS.NUM_CLASSES = 0
 # Input feature dimension
@@ -192,7 +152,7 @@ _C.MODEL.HEADS.SCALE = 128
 # REID LOSSES options
 # ---------------------------------------------------------------------------- #
 _C.MODEL.LOSSES = CN()
-_C.MODEL.LOSSES.NAME = ("CrossEntropyLoss", "TripletLoss", "Reg_bottleneck", "Reg_classifier",)
+_C.MODEL.LOSSES.NAME = ("CrossEntropyLoss", "TripletLoss",)
 
 # Cross Entropy Loss options
 _C.MODEL.LOSSES.CE = CN()
@@ -220,6 +180,20 @@ _C.MODEL.LOSSES.FL = CN()
 _C.MODEL.LOSSES.FL.ALPHA = 0.25
 _C.MODEL.LOSSES.FL.GAMMA = 2
 _C.MODEL.LOSSES.FL.SCALE = 1.0
+
+
+_C.MODEL.NORM = CN()
+_C.MODEL.NORM.BN_AFFINE = True # learn w,b
+_C.MODEL.NORM.BN_RUNNING = True # apply running mean, var
+_C.MODEL.NORM.IN_AFFINE = False # learn w,b
+_C.MODEL.NORM.IN_RUNNING = False # apply running mean, var
+_C.MODEL.NORM.BIN_INIT = 'one' # 'random', 'one', 'zero'
+_C.MODEL.NORM.IN_FC_MULTIPLY = 0.0 # applied when "IN" in fc
+_C.MODEL.NORM.LOAD_BN_AFFINE = True # change to False when IN
+_C.MODEL.NORM.LOAD_BN_RUNNING = True # change to False when IN
+_C.MODEL.NORM.TYPE_BACKBONE = "BN"
+_C.MODEL.NORM.TYPE_BOTTLENECK = "BN"
+_C.MODEL.NORM.TYPE_CLASSIFIER = "BN"
 
 # Path to a checkpoint file to be loaded to the model. You can find available models in the model zoo.
 _C.MODEL.WEIGHTS = ""
@@ -287,12 +261,18 @@ _C.DATASETS.COMBINEALL = False
 # -----------------------------------------------------------------------------
 _C.DATALOADER = CN()
 # P/K Sampler for data loading
-_C.DATALOADER.PK_SAMPLER = True
+# _C.DATALOADER.PK_SAMPLER = True
 # Naive sampler which don't consider balanced identity sampling
-_C.DATALOADER.NAIVE_WAY = True
+_C.DATALOADER.NAIVE_WAY = False
+_C.DATALOADER.DELETE_REM = True # if true, remain idx lower than num_instance
+_C.DATALOADER.INDIVIDUAL = False
 # Number of instance for each person
 _C.DATALOADER.NUM_INSTANCE = 4
 _C.DATALOADER.NUM_WORKERS = 4
+_C.DATALOADER.DROP_LAST = True
+# _C.DATALOADER.DIVIDE_SOURCE = False
+# _C.DATALOADER.DIVIDE_METHOD = 'dataloader' # dataloader -> multiple dataloaders, sample -> single dataloaders
+
 
 # ---------------------------------------------------------------------------- #
 # Solver

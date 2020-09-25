@@ -13,7 +13,7 @@ import logging
 import os
 import sys
 from collections import OrderedDict
-
+import numpy
 import torch
 import torch.nn.functional as F
 from torch.nn.parallel import DistributedDataParallel
@@ -37,8 +37,6 @@ from .train_loop import SimpleTrainer
 # logger = logging.getLogger(__name__)
 
 __all__ = ["default_argument_parser", "default_setup", "DefaultPredictor", "DefaultTrainer"]
-
-
 def default_argument_parser():
     """
     Create a parser with some common arguments used by fastreid users.
@@ -71,8 +69,6 @@ def default_argument_parser():
         nargs=argparse.REMAINDER,
     )
     return parser
-
-
 def default_setup(cfg, args):
     """
     Perform some basic common setups at the beginning of a job, including:
@@ -120,8 +116,6 @@ def default_setup(cfg, args):
     # typical validation set.
     if not (hasattr(args, "eval_only") and args.eval_only):
         torch.backends.cudnn.benchmark = cfg.CUDNN_BENCHMARK
-
-
 class DefaultPredictor:
     """
     Create a simple end-to-end predictor with the given config.
@@ -161,41 +155,7 @@ class DefaultPredictor:
             features = F.normalize(predictions)
             features = F.normalize(features).cpu().data
             return features
-
-
 class DefaultTrainer(SimpleTrainer):
-    """
-    A trainer with default training logic. Compared to `SimpleTrainer`, it
-    contains the following logic in addition:
-    1. Create model, optimizer, scheduler, dataloader from the given config.
-    2. Load a checkpoint or `cfg.MODEL.WEIGHTS`, if exists.
-    3. Register a few common hooks.
-    It is created to simplify the **standard model training workflow** and reduce code boilerplate
-    for users who only need the standard training workflow, with standard features.
-    It means this class makes *many assumptions* about your training logic that
-    may easily become invalid in a new research. In fact, any assumptions beyond those made in the
-    :class:`SimpleTrainer` are too much for research.
-    The code of this class has been annotated about restrictive assumptions it mades.
-    When they do not work for you, you're encouraged to:
-    1. Overwrite methods of this class, OR:
-    2. Use :class:`SimpleTrainer`, which only does minimal SGD training and
-       nothing else. You can then add your own hooks if needed. OR:
-    3. Write your own training loop similar to `tools/plain_train_net.py`.
-    Also note that the behavior of this class, like other functions/classes in
-    this file, is not stable, since it is meant to represent the "common default behavior".
-    It is only guaranteed to work well with the standard models and training workflow in fastreid.
-    To obtain more stable behavior, write your own training logic with other public APIs.
-    Attributes:
-        scheduler:
-        checkpointer (DetectionCheckpointer):
-        cfg (CfgNode):
-    Examples:
-    .. code-block:: python
-        trainer = DefaultTrainer(cfg)
-        trainer.resume_or_load()  # load last checkpoint or MODEL.WEIGHTS
-        trainer.train()
-    """
-
     def __init__(self, cfg):
         logger = logging.getLogger("fastreid")
         if not logger.isEnabledFor(logging.INFO):  # setup_logger is not called for fastreid
@@ -203,192 +163,93 @@ class DefaultTrainer(SimpleTrainer):
 
         data_loader, data_loader_add, cfg = self.build_train_loader(cfg)
         cfg = self.auto_scale_hyperparams(cfg, data_loader)
+        model = self.build_model(cfg)
+        optimizer = self.build_optimizer(cfg, model) # params, lr, momentum, ..
 
-        meta_learning_parameter = {}
-        cfg.defrost()
-        # about meta weight loader
-        if cfg.META.SOLVER.FINAL.WEIGHT_LOADER is not None:
-            cfg.META.SOLVER.INIT.MAX_ITER = 0
-            cfg.META.SOLVER.FINAL.MAX_ITER = 0
-            logger.info('************** load meta-learning paramter **************')
-            logger.info('Folder: {}'.format(cfg.META.SOLVER.FINAL.WEIGHT_FOLDER))
-            logger.info('Name: {}'.format(cfg.META.SOLVER.FINAL.WEIGHT_LOADER))
-            meta_learning_parameter['load_parameter'] = True
-            meta_learning_parameter['load_parameter_dir'] = os.path.join(cfg.META.SOLVER.FINAL.WEIGHT_FOLDER, cfg.META.SOLVER.FINAL.WEIGHT_LOADER)
-            assert os.path.isfile(meta_learning_parameter['load_parameter_dir'])
-        else:
-            logger.info('***** meta-learning paramter to load does not exist *****')
-            meta_learning_parameter['load_parameter'] = False
+        meta_param = dict()
+        if cfg.META.DATA.NAMES != "":
+            meta_param['num_domain'] = cfg.META.DATA.NUM_DOMAINS
 
-        # about meta-learing and original learning
-        if cfg.META.SOLVER.INIT.MAX_ITER + cfg.META.SOLVER.FINAL.MAX_ITER > 0:
-            meta_learning_parameter['meta_learning'] = True
-            logger.info('***** meta-learning (O) *****')
-        else:
-            meta_learning_parameter['meta_learning'] = False
-            logger.info('***** meta-learning (X) *****')
-        if cfg.META.SOLVER.TRAIN_ORIGINAL:
-            meta_learning_parameter['ori_iter'] = True
-            logger.info('***** Original training (O) *****')
-        else:
-            meta_learning_parameter['ori_iter'] = False
-            logger.info('***** Original training (X) *****')
-            model = None
-            data_loader = None
-            optimizer = None
+            meta_param['meta_compute_layer'] = cfg.META.MODEL.META_COMPUTE_LAYER
+            meta_param['meta_update_layer'] = cfg.META.MODEL.META_UPDATE_LAYER
 
-        # If meta learning
-        if meta_learning_parameter['meta_learning']: # meta_learning on
-            # Make model
-            old_pretrained = cfg.MODEL.BACKBONE.PRETRAIN
-            if 'scratch' in cfg.META.SOLVER.FINAL.INITIALIZE_CONV_STATE_META:
-                cfg.MODEL.BACKBONE.PRETRAIN = False
-            elif 'pretrained' in cfg.META.SOLVER.FINAL.INITIALIZE_CONV_STATE_META:
-                cfg.MODEL.BACKBONE.PRETRAIN = True
-            else:
-                print('error in INITIALIZE_CONV_STATE_META')
+            meta_param['iter_init_inner'] = cfg.META.SOLVER.INIT.INNER_LOOP
+            meta_param['iter_init_outer'] = cfg.META.SOLVER.INIT.OUTER_LOOP
 
-            model_meta = self.build_model(cfg)
-            logger.info('*[meta]* pretrained ori-model:{}'.format(cfg.MODEL.BACKBONE.PRETRAIN))
-            if meta_learning_parameter['ori_iter']:
-                if 'scratch' in cfg.META.SOLVER.FINAL.INITIALIZE_CONV_STATE_ORI:
-                    cfg.MODEL.BACKBONE.PRETRAIN = False
-                elif 'pretrained' in cfg.META.SOLVER.FINAL.INITIALIZE_CONV_STATE_ORI:
-                    cfg.MODEL.BACKBONE.PRETRAIN = True
-                else:
-                    print('error in INITIALIZE_CONV_STATE_ORI')
-                model = self.build_model(cfg)
-                logger.info('*[meta]* pretrained meta-model:{}'.format(cfg.MODEL.BACKBONE.PRETRAIN))
-            cfg.MODEL.BACKBONE.PRETRAIN = old_pretrained
+            meta_param['update_ratio'] = cfg.META.SOLVER.LR_FACTOR.META_UPDATE
 
-            meta_learning_parameter['optimizer_init'] = self.build_optimizer(cfg, model_meta)
-            meta_learning_parameter['optimizer_final'] = self.build_optimizer(cfg, model_meta)
 
-            num_dataset = [len(x.dataset) for x in data_loader_add['init']]
-            num_source = len(num_dataset)
-            ratio_init = max(num_dataset)
-            ratio_init //= cfg.META.SOLVER.INIT.IMS_PER_BATCH
-            meta_learning_parameter['iter_local'] = int(cfg.META.SOLVER.INIT.MAX_ITER * ratio_init)
-            logger.info('*[meta]* the iteration number of initialization:{}'.format(meta_learning_parameter['iter_local']))
+            meta_param['iter_mtrain'] = cfg.META.SOLVER.MTRAIN.INNER_LOOP
+            meta_param['shuffle_domain'] = cfg.META.SOLVER.MTRAIN.SHUFFLE_DOMAIN
+            meta_param['use_second_order'] = cfg.META.SOLVER.MTRAIN.SECOND_ORDER
+            meta_param['num_mtrain'] = cfg.META.SOLVER.MTRAIN.NUM_DOMAIN
+            meta_param['freeze_gradient_meta'] = cfg.META.SOLVER.MTRAIN.FREEZE_GRAD_META
+            meta_param['allow_unused'] = cfg.META.SOLVER.MTRAIN.ALLOW_UNUSED
+            meta_param['zero_grad'] = cfg.META.SOLVER.MTRAIN.BEFORE_ZERO_GRAD
+            meta_param['type_running_stats_init'] = cfg.META.SOLVER.INIT.TYPE_RUNNING_STATS
+            meta_param['type_running_stats_mtrain'] = cfg.META.SOLVER.MTRAIN.TYPE_RUNNING_STATS
+            meta_param['type_running_stats_mtest'] = cfg.META.SOLVER.MTEST.TYPE_RUNNING_STATS
+
             if cfg.META.SOLVER.MTEST.ONLY_ONE_DOMAIN:
-                meta_learning_parameter['num_mtest'] = 1
+                meta_param['num_mtest'] = 1
             else:
-                meta_learning_parameter['num_mtest'] = num_source - cfg.META.SOLVER.MTRAIN.NUM_DOMAIN
+                meta_param['num_mtest'] = meta_param['num_domain']\
+                                                       - meta_param['num_mtrain']
 
+            meta_param['sync'] = cfg.META.SOLVER.SYNC
+            meta_param['detail_mode'] = cfg.META.SOLVER.DETAIL_MODE
+            meta_param['stop_gradient'] = cfg.META.SOLVER.STOP_GRADIENT
+            meta_param['flag_manual_zero_grad'] = cfg.META.SOLVER.MANUAL_ZERO_GRAD
 
-            num_dataset = [len(x.dataset) for x in data_loader_add['mtest']]
-            ratio_final = max(num_dataset)
-            ratio_final //= cfg.META.SOLVER.MTEST.IMS_PER_BATCH
-            meta_learning_parameter['iteration_all'] = int(cfg.META.SOLVER.FINAL.MAX_ITER * ratio_final)
-            logger.info('*[meta]* the iteration number of meta-learning:{}'.format(meta_learning_parameter['iteration_all']))
+            meta_param['loss_combined'] = cfg.META.LOSS.COMBINED
+            meta_param['loss_weight'] = cfg.META.LOSS.WEIGHT
+            meta_param['loss_name_mtrain'] = cfg.META.LOSS.MTRAIN_NAME
+            meta_param['loss_name_mtest'] = cfg.META.LOSS.MTEST_NAME
 
-            meta_learning_parameter['loss_combined'] = cfg.META.LOSS.COMBINED
-            meta_learning_parameter['iter_init_inner'] = cfg.META.SOLVER.INIT.INNER_LOOP
-            meta_learning_parameter['iter_init_outer'] = cfg.META.SOLVER.INIT.OUTER_LOOP
-            meta_learning_parameter['iter_mtrain'] = cfg.META.SOLVER.MTRAIN.INNER_LOOP
-            meta_learning_parameter['num_mtrain'] = cfg.META.SOLVER.MTRAIN.NUM_DOMAIN
-            meta_learning_parameter['inner_loop_type'] = cfg.META.SOLVER.MTRAIN.INNER_LOOP_TYPE
-            meta_learning_parameter['write_period'] = cfg.META.SOLVER.WRITE_PERIOD
-            meta_learning_parameter['write_period_param'] = cfg.META.SOLVER.WRITE_PERIOD_PARAM
-            meta_learning_parameter['save_meta_param'] = cfg.META.SOLVER.FINAL.SAVE_META_PARAM
-            meta_learning_parameter['initialize_conv'] = cfg.META.SOLVER.FINAL.INITIALIZE_CONV
-            meta_learning_parameter['initialize_fc'] = cfg.META.SOLVER.FINAL.INITIALIZE_FC
-            meta_learning_parameter['dataloader_init'] = data_loader_add['init']  # need two dataloaders
-            meta_learning_parameter['dataloader_mtrain'] = data_loader_add['mtrain']  # new batch, ~~
-            meta_learning_parameter['dataloader_mtest'] = data_loader_add['mtest']  # new batch, ~~
-            meta_learning_parameter['loss_name_init'] = cfg.META.LOSS.INIT_NAME
-            meta_learning_parameter['loss_name_mtrain'] = cfg.META.LOSS.MTRAIN_NAME
-            meta_learning_parameter['loss_name_mtest'] = cfg.META.LOSS.MTEST_NAME
-            meta_learning_parameter['detail_mode'] = cfg.META.SOLVER.FINAL.DETAIL_MODE
-            meta_learning_parameter['output_dir'] = cfg.OUTPUT_DIR
-            meta_learning_parameter['sync'] = cfg.META.SOLVER.SYNC
+            logger.info('-' * 30)
+            logger.info('Meta-learning paramters')
+            logger.info('-' * 30)
+            for name, val in meta_param.items():
+                logger.info('[M_param] {}: {}'.format(name, val))
+            logger.info('-' * 30)
 
-            # Meta-learning optimizer
-            if not meta_learning_parameter['optimizer_init'] == None:
-                meta_learning_parameter['scheduler_init'] = self.build_lr_scheduler(
-                    optimizer=meta_learning_parameter['optimizer_init'],
-                    scheduler_method=cfg.META.SOLVER.INIT.SCHED,
-                    warmup_factor=cfg.SOLVER.WARMUP_FACTOR,
-                    warmup_iters= int(cfg.META.SOLVER.INIT.WARMUP_ITERS * ratio_init),
-                    warmup_method=cfg.SOLVER.WARMUP_METHOD,
-                    milestones=[int(x * ratio_init) for x in cfg.META.SOLVER.INIT.STEPS],
-                    gamma=cfg.META.SOLVER.INIT.GAMMA,
-                    max_iters=int(cfg.META.SOLVER.INIT.MAX_ITER * ratio_init),
-                    delay_iters=cfg.SOLVER.DELAY_ITERS,
-                    eta_min_lr=cfg.SOLVER.ETA_MIN_LR,
-                )
-
-            if not meta_learning_parameter['optimizer_final'] == None:
-                meta_learning_parameter['scheduler_final'] = self.build_lr_scheduler(
-                    optimizer = meta_learning_parameter['optimizer_final'],
-                    scheduler_method = cfg.META.SOLVER.FINAL.SCHED,
-                    warmup_factor = cfg.SOLVER.WARMUP_FACTOR,
-                    warmup_iters= int(cfg.META.SOLVER.FINAL.WARMUP_ITERS * ratio_final),
-                    warmup_method=cfg.SOLVER.WARMUP_METHOD,
-                    milestones=[int(x * ratio_final) for x in cfg.META.SOLVER.FINAL.STEPS],
-                    gamma=cfg.META.SOLVER.FINAL.GAMMA,
-                    max_iters= int(cfg.META.SOLVER.FINAL.MAX_ITER * ratio_final),
-                    delay_iters=cfg.SOLVER.DELAY_ITERS,
-                    eta_min_lr=cfg.SOLVER.ETA_MIN_LR,
-                )
-        else:
-
-            if meta_learning_parameter['ori_iter']:
-                model = self.build_model(cfg)
-            meta_learning_parameter['optimizer_init'] = None
-            meta_learning_parameter['optimizer_final'] = None
-            model_meta = None
-        cfg.freeze()
-
-        if meta_learning_parameter['ori_iter']:
-            optimizer = self.build_optimizer(cfg, model) # params, lr, momentum, ..
-            # For training, wrap with DDP. But don't need this for inference.
-            if comm.get_world_size() > 1:
-                # ref to https://github.com/pytorch/pytorch/issues/22049 to set `find_unused_parameters=True`
-                # for part of the parameters is not updated.
-                model = DistributedDataParallel(
-                    model, device_ids=[comm.get_local_rank()], broadcast_buffers=False
-                )
-
-        super().__init__(cfg, model, model_meta, data_loader, optimizer, meta_learning_parameter)
-
-
-        if meta_learning_parameter['ori_iter']:
-            self.scheduler = self.build_lr_scheduler(
-                optimizer = optimizer,
-                scheduler_method = cfg.SOLVER.SCHED,
-                warmup_factor = cfg.SOLVER.WARMUP_FACTOR,
-                warmup_iters=cfg.SOLVER.WARMUP_ITERS,
-                warmup_method=cfg.SOLVER.WARMUP_METHOD,
-                milestones=cfg.SOLVER.STEPS,
-                gamma=cfg.SOLVER.GAMMA,
-                max_iters=cfg.SOLVER.MAX_ITER,
-                delay_iters=cfg.SOLVER.DELAY_ITERS,
-                eta_min_lr=cfg.SOLVER.ETA_MIN_LR,
+        if comm.get_world_size() > 1:
+            # ref to https://github.com/pytorch/pytorch/issues/22049 to set `find_unused_parameters=True`
+            # for part of the parameters is not updated.
+            model = DistributedDataParallel(
+                model, device_ids=[comm.get_local_rank()], broadcast_buffers=False
             )
 
-            # Assume no other objects need to be checkpointed.
-            # We can later make it checkpoint the stateful hooks
-            self.checkpointer = Checkpointer(
-                # Assume you want to save checkpoints together with logs/statistics
-                model,
-                cfg.OUTPUT_DIR,
-                save_to_disk=comm.is_main_process(),
-                optimizer=optimizer,
-                scheduler=self.scheduler,
-            )
+        super().__init__(cfg, model, data_loader, data_loader_add, optimizer, meta_param)
+
+        self.scheduler = self.build_lr_scheduler(
+            optimizer = optimizer,
+            scheduler_method = cfg.SOLVER.SCHED,
+            warmup_factor = cfg.SOLVER.WARMUP_FACTOR,
+            warmup_iters=cfg.SOLVER.WARMUP_ITERS,
+            warmup_method=cfg.SOLVER.WARMUP_METHOD,
+            milestones=cfg.SOLVER.STEPS,
+            gamma=cfg.SOLVER.GAMMA,
+            max_iters=cfg.SOLVER.MAX_ITER,
+            delay_iters=cfg.SOLVER.DELAY_ITERS,
+            eta_min_lr=cfg.SOLVER.ETA_MIN_LR,
+        )
+
+        self.checkpointer = Checkpointer(
+            model,
+            cfg.OUTPUT_DIR,
+            save_to_disk=comm.is_main_process(),
+            optimizer=optimizer,
+            scheduler=self.scheduler,
+        )
+
         self.start_iter = 0
         if cfg.SOLVER.SWA.ENABLED:
             self.max_iter = cfg.SOLVER.MAX_ITER + cfg.SOLVER.SWA.ITER
         else:
             self.max_iter = cfg.SOLVER.MAX_ITER
         self.cfg = cfg
-
-        if meta_learning_parameter['ori_iter']:
-            self.register_hooks(self.build_hooks())
-
-
-
+        self.register_hooks(self.build_hooks())
 
     def resume_or_load(self, resume=True):
         """
@@ -408,7 +269,6 @@ class DefaultTrainer(SimpleTrainer):
             self.start_iter = checkpoint.get("iteration", -1) + 1
             # The checkpoint stores the training iteration that just finished, thus we start
             # at the next iteration (or iter zero if there's no checkpoint).
-
     def build_hooks(self):
         """
         Build a list of default hooks, including timing, evaluation,
@@ -486,10 +346,6 @@ class DefaultTrainer(SimpleTrainer):
         # PeriodicCheckpointer
         # EvalHook
         # PeriodicWriter
-
-
-
-
     def build_writers(self):
         """
         Build a list of writers to be used. By default it contains
@@ -514,7 +370,6 @@ class DefaultTrainer(SimpleTrainer):
             JSONWriter(os.path.join(self.cfg.OUTPUT_DIR, "metrics.json")),
             TensorboardXWriter(self.cfg.OUTPUT_DIR),
         ]
-
     def train(self):
         """
         Run training.
@@ -529,7 +384,6 @@ class DefaultTrainer(SimpleTrainer):
             ), "No evaluation results obtained during training!"
             # verify_results(self.cfg, self._last_eval_results)
             return self._last_eval_results
-
     @classmethod
     def build_model(cls, cfg):
         """
@@ -542,7 +396,6 @@ class DefaultTrainer(SimpleTrainer):
         # logger = logging.getLogger(__name__)
         # logger.info("Model:\n{}".format(model))
         return model
-
     @classmethod
     def build_optimizer(cls, cfg, model):
         """
@@ -552,18 +405,10 @@ class DefaultTrainer(SimpleTrainer):
         Overwrite it if you'd like a different optimizer.
         """
         return build_optimizer(cfg, model)
-
     @classmethod
-    def build_lr_scheduler(cls, optimizer,
-                           scheduler_method,
-                           warmup_factor,
-                           warmup_iters,
-                           warmup_method,
-                           milestones,
-                           gamma,
-                           max_iters,
-                           delay_iters,
-                           eta_min_lr):
+    def build_lr_scheduler(cls, optimizer, scheduler_method, warmup_factor,
+                           warmup_iters, warmup_method, milestones,
+                           gamma, max_iters, delay_iters, eta_min_lr):
         """
         It now calls :func:`fastreid.solver.build_lr_scheduler`.
         Overwrite it if you'd like a different scheduler.
@@ -578,7 +423,6 @@ class DefaultTrainer(SimpleTrainer):
                                   max_iters,
                                   delay_iters,
                                   eta_min_lr)
-
     @classmethod
     def build_train_loader(cls, cfg):
         """
@@ -590,7 +434,6 @@ class DefaultTrainer(SimpleTrainer):
         logger = logging.getLogger(__name__)
         logger.info("Prepare training set")
         return build_reid_train_loader(cfg)
-
     @classmethod
     def build_test_loader(cls, cfg, dataset_name, opt=None):
         """
@@ -600,11 +443,9 @@ class DefaultTrainer(SimpleTrainer):
         Overwrite it if you'd like a different data loader.
         """
         return build_reid_test_loader(cfg, dataset_name, opt)
-
     @classmethod
     def build_evaluator(cls, cfg, num_query, output_dir=None):
         return ReidEvaluator(cfg, num_query, output_dir)
-
     @classmethod
     def test(cls, cfg, model, evaluators=None):
         """
@@ -623,8 +464,6 @@ class DefaultTrainer(SimpleTrainer):
             print('*' * 100)
             print('Hmm, Big Debugger is watching me')
             print('*' * 100)
-
-
 
 
         logger = logging.getLogger(__name__)
@@ -680,18 +519,25 @@ class DefaultTrainer(SimpleTrainer):
                     if report_all:
                         results[dataset_name+'_'+x] = results_i
                     results_local[dataset_name+'_'+x] = results_i
-
                 results_local_average = OrderedDict()
+                results_local_std = OrderedDict()
                 for name_global, val_global in results_local.items():
                     if len(results_local_average) == 0:
                         for name, val in results_local[name_global].items():
                             results_local_average[name] = val
+                            results_local_std[name] = val
                     else:
                         for name, val in results_local[name_global].items():
                             results_local_average[name] += val
+                            results_local_std[name] = \
+                                numpy.hstack([results_local_std[name], val])
+                for name, val in results_local_std.items():
+                        results_local_std[name] = numpy.std(val)
+
                 for name, val in results_local_average.items():
                     results_local_average[name] /= float(len(results_local))
                 results[dataset_name+'_average'] = results_local_average
+                results[dataset_name+'_std'] = results_local_std
 
             else:
                 data_loader, num_query = cls.build_test_loader(cfg, dataset_name)
@@ -712,6 +558,24 @@ class DefaultTrainer(SimpleTrainer):
                 results_i = inference_on_dataset(model, data_loader, evaluator)
                 results[dataset_name] = results_i
 
+        results_all_average = OrderedDict()
+        cnt_average = 0
+        for name_global, val_global in results.items():
+            if 'average' in name_global:
+                cnt_average += 1
+                if len(results_all_average) == 0:
+                    for name, val in results[name_global].items():
+                        results_all_average[name] = val
+                else:
+                    for name, val in results[name_global].items():
+                        results_all_average[name] += val
+
+        for name, val in results_all_average.items():
+            results_all_average[name] /= float(cnt_average)
+
+        results['** all_average **'] = results_all_average
+
+
         if comm.is_main_process():
             assert isinstance(
                 results, dict
@@ -723,7 +587,6 @@ class DefaultTrainer(SimpleTrainer):
         if len(results) == 1: results = list(results.values())[0]
 
         return results
-
     @staticmethod
     def auto_scale_hyperparams(cfg, data_loader):
         r"""
@@ -736,8 +599,21 @@ class DefaultTrainer(SimpleTrainer):
         frozen = cfg.is_frozen()
         cfg.defrost()
 
-        iters_per_epoch = len(data_loader.dataset) // cfg.SOLVER.IMS_PER_BATCH
-        cfg.MODEL.HEADS.NUM_CLASSES = data_loader.dataset.num_classes
+        if isinstance(data_loader, list):
+            num_images = max([x.batch_sampler.sampler.total_images for x in data_loader])
+            num_classes = len(data_loader[0].dataset.pid_dict)
+        else:
+            num_images = data_loader.batch_sampler.sampler.total_images
+            num_classes = data_loader.dataset.num_classes
+
+        if cfg.META.DATA.NAMES != "": # meta-learning
+            if cfg.META.SOLVER.INIT.INNER_LOOP == 0:
+                iters_per_epoch = num_images // cfg.SOLVER.IMS_PER_BATCH
+            else:
+                iters_per_epoch = num_images // (cfg.SOLVER.IMS_PER_BATCH * cfg.META.SOLVER.INIT.INNER_LOOP)
+        else:
+            iters_per_epoch = num_images // cfg.SOLVER.IMS_PER_BATCH
+        cfg.MODEL.HEADS.NUM_CLASSES = num_classes
         cfg.SOLVER.MAX_ITER *= iters_per_epoch
         cfg.SOLVER.WARMUP_ITERS *= iters_per_epoch
         cfg.SOLVER.FREEZE_ITERS *= iters_per_epoch

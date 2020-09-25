@@ -4,5 +4,5 @@
 @contact: sherlockliao01@gmail.com
 """
 
-from .triplet_sampler import BalancedIdentitySampler, NaiveIdentitySampler
+from .triplet_sampler import BalancedIdentitySampler, NaiveIdentitySampler, DomainSuffleSampler
 from .data_sampler import TrainingSampler, InferenceSampler

@@ -7,9 +7,12 @@
 import logging
 import math
 
+from fastreid.modeling.ops import meta_conv2d, meta_norm
+import copy
 import torch
 from torch import nn
 from torch.utils import model_zoo
+
 
 from fastreid.layers import (
     IBN,
@@ -33,13 +36,13 @@ model_urls = {
 class BasicBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, inplanes, planes, bn_norm, num_splits, with_ibn=False, with_se=False,
+    def __init__(self, inplanes, planes, bn_norm, norm_opt, num_splits, with_ibn=False, with_se=False,
                  stride=1, downsample=None, reduction=16):
         super(BasicBlock, self).__init__()
-        self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
-        self.bn1 = get_norm(bn_norm, planes, num_splits)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn2 = get_norm(bn_norm, planes, num_splits)
+        self.conv1 = meta_conv2d(inplanes, planes, kernel_size = 3, stride=stride, padding=1, bias=False)
+        self.bn1 = meta_norm(bn_norm, planes, norm_opt=norm_opt)
+        self.conv2 = meta_conv2d(planes, planes, kernel_size = 3, stride=1, padding=1, bias=False)
+        self.bn2 = meta_norm(bn_norm, planes, norm_opt=norm_opt)
         self.relu = nn.ReLU(inplace=True)
         if with_se:
             self.se = SELayer(planes, reduction)
@@ -48,18 +51,18 @@ class BasicBlock(nn.Module):
         self.downsample = downsample
         self.stride = stride
 
-    def forward(self, x):
+    def forward(self, x, opt = None):
         identity = x
 
-        out = self.conv1(x)
-        out = self.bn1(out)
+        out = self.conv1(x, opt)
+        out = self.bn1(out, opt)
         out = self.relu(out)
 
-        out = self.conv2(out)
-        out = self.bn2(out)
+        out = self.conv2(out, opt)
+        out = self.bn2(out, opt)
 
         if self.downsample is not None:
-            identity = self.downsample(x)
+            identity = self.downsample(x, opt)
 
         out += identity
         out = self.relu(out)
@@ -70,19 +73,19 @@ class BasicBlock(nn.Module):
 class Bottleneck(nn.Module):
     expansion = 4
 
-    def __init__(self, inplanes, planes, bn_norm, num_splits, with_ibn=False, with_se=False,
+    def __init__(self, inplanes, planes, bn_norm, norm_opt, num_splits, with_ibn=False, with_se=False,
                  stride=1, downsample=None, reduction=16):
         super(Bottleneck, self).__init__()
-        self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=1, bias=False)
+        self.conv1 = meta_conv2d(inplanes, planes, kernel_size=1, bias=False)
         if with_ibn:
             self.bn1 = IBN(planes, bn_norm, num_splits)
         else:
-            self.bn1 = get_norm(bn_norm, planes, num_splits)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=stride,
+            self.bn1 = meta_norm(bn_norm, planes, norm_opt = norm_opt)
+        self.conv2 = meta_conv2d(planes, planes, kernel_size=3, stride=stride,
                                padding=1, bias=False)
-        self.bn2 = get_norm(bn_norm, planes, num_splits)
-        self.conv3 = nn.Conv2d(planes, planes * self.expansion, kernel_size=1, bias=False)
-        self.bn3 = get_norm(bn_norm, planes * self.expansion, num_splits)
+        self.bn2 = meta_norm(bn_norm, planes, norm_opt = norm_opt)
+        self.conv3 = meta_conv2d(planes, planes * self.expansion, kernel_size=1, bias=False)
+        self.bn3 = meta_norm(bn_norm, planes * self.expansion, norm_opt = norm_opt)
         self.relu = nn.ReLU(inplace=True)
         if with_se:
             self.se = SELayer(planes * self.expansion, reduction)
@@ -91,43 +94,60 @@ class Bottleneck(nn.Module):
         self.downsample = downsample
         self.stride = stride
 
-    def forward(self, x):
+    def forward(self, x, opt = None):
         residual = x
 
-        out = self.conv1(x)
-        out = self.bn1(out)
+        out = self.conv1(x, opt)
+        out = self.bn1(out, opt)
         out = self.relu(out)
 
-        out = self.conv2(out)
-        out = self.bn2(out)
+        out = self.conv2(out, opt)
+        out = self.bn2(out, opt)
         out = self.relu(out)
 
-        out = self.conv3(out)
-        out = self.bn3(out)
+        out = self.conv3(out, opt)
+        out = self.bn3(out, opt)
         out = self.se(out)
 
         if self.downsample is not None:
-            residual = self.downsample(x)
+            residual = self.downsample(x, opt)
 
         out += residual
         out = self.relu(out)
 
         return out
 
+class Downsample(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, bias, bn_norm, norm_opt, bn_out_channels, num_splits):
+        super(Downsample, self).__init__()
+        # self = nn.Sequential()
+        # self.downsample = nn.Module
+        self.conv = meta_conv2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, bias=bias)
+        self.bn = meta_norm(bn_norm, bn_out_channels, norm_opt =norm_opt)
+
+        # self.downsample = nn.Sequential(
+        #     meta_conv2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, bias=bias),
+        #     get_norm(norm, bn_out_channels, num_splits),
+        # )
+    def forward(self, x, opt = None):
+        x = self.conv(x, opt)
+        out = self.bn(x, opt)
+        return out
+
+
 
 class ResNet(nn.Module):
-    def __init__(self, last_stride, bn_norm, num_splits, with_ibn, with_se, with_nl, block, layers, non_layers):
+    def __init__(self, last_stride, bn_norm, norm_opt, num_splits, with_ibn, with_se, with_nl, block, layers, non_layers):
         self.inplanes = 64
         super().__init__()
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3,
-                               bias=False)
-        self.bn1 = get_norm(bn_norm, 64, num_splits)
+        self.conv1 = meta_conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.bn1 = meta_norm(bn_norm, 64, norm_opt = norm_opt)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.layer1 = self._make_layer(block, 64, layers[0], 1, bn_norm, num_splits, with_ibn, with_se)
-        self.layer2 = self._make_layer(block, 128, layers[1], 2, bn_norm, num_splits, with_ibn, with_se)
-        self.layer3 = self._make_layer(block, 256, layers[2], 2, bn_norm, num_splits, with_ibn, with_se)
-        self.layer4 = self._make_layer(block, 512, layers[3], last_stride, bn_norm, num_splits, with_se=with_se)
+        self.layer1 = self._make_layer(block, 64, layers[0], 1, bn_norm, norm_opt, num_splits, with_ibn, with_se)
+        self.layer2 = self._make_layer(block, 128, layers[1], 2, bn_norm, norm_opt, num_splits, with_ibn, with_se)
+        self.layer3 = self._make_layer(block, 256, layers[2], 2, bn_norm, norm_opt, num_splits, with_ibn, with_se)
+        self.layer4 = self._make_layer(block, 512, layers[3], last_stride, bn_norm, norm_opt, num_splits, with_se=with_se)
 
         self.random_init()
 
@@ -136,22 +156,25 @@ class ResNet(nn.Module):
         else:
             self.NL_1_idx = self.NL_2_idx = self.NL_3_idx = self.NL_4_idx = []
 
-    def _make_layer(self, block, planes, blocks, stride=1, bn_norm="BN", num_splits=1, with_ibn=False, with_se=False):
+    def _make_layer(self, block, planes, blocks, stride=1, bn_norm="BN", norm_opt = None, num_splits=1, with_ibn=False, with_se=False):
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
-            downsample = nn.Sequential(
-                nn.Conv2d(self.inplanes, planes * block.expansion,
-                          kernel_size=1, stride=stride, bias=False),
-                get_norm(bn_norm, planes * block.expansion, num_splits),
-            )
+            downsample = Downsample(self.inplanes, planes * block.expansion,
+                                    1, stride, False, bn_norm, norm_opt, planes * block.expansion, num_splits)
+            # downsample = ds.downsample
+            #     downsample = nn.Sequential(
+            #         meta_conv2d(self.inplanes, planes * block.expansion,
+            #                   kernel_size=1, stride=stride, bias=False),
+            #         get_norm(bn_norm, planes * block.expansion, num_splits),
+            #     )
 
         layers = []
         if planes == 512:
             with_ibn = False
-        layers.append(block(self.inplanes, planes, bn_norm, num_splits, with_ibn, with_se, stride, downsample))
+        layers.append(block(self.inplanes, planes, bn_norm, norm_opt, num_splits, with_ibn, with_se, stride, downsample))
         self.inplanes = planes * block.expansion
         for i in range(1, blocks):
-            layers.append(block(self.inplanes, planes, bn_norm, num_splits, with_ibn, with_se))
+            layers.append(block(self.inplanes, planes, bn_norm, norm_opt, num_splits, with_ibn, with_se))
 
         return nn.Sequential(*layers)
 
@@ -169,9 +192,9 @@ class ResNet(nn.Module):
             [Non_local(2048, bn_norm, num_splits) for _ in range(non_layers[3])])
         self.NL_4_idx = sorted([layers[3] - (i + 1) for i in range(non_layers[3])])
 
-    def forward(self, x):
-        x = self.conv1(x)
-        x = self.bn1(x)
+    def forward(self, x, opt = None):
+        x = self.conv1(x, opt)
+        x = self.bn1(x, opt)
         x = self.relu(x)
         x = self.maxpool(x)
 
@@ -179,7 +202,7 @@ class ResNet(nn.Module):
         if len(self.NL_1_idx) == 0:
             self.NL_1_idx = [-1]
         for i in range(len(self.layer1)):
-            x = self.layer1[i](x)
+            x = self.layer1[i](x, opt)
             if i == self.NL_1_idx[NL1_counter]:
                 _, C, H, W = x.shape
                 x = self.NL_1[NL1_counter](x)
@@ -189,7 +212,7 @@ class ResNet(nn.Module):
         if len(self.NL_2_idx) == 0:
             self.NL_2_idx = [-1]
         for i in range(len(self.layer2)):
-            x = self.layer2[i](x)
+            x = self.layer2[i](x, opt)
             if i == self.NL_2_idx[NL2_counter]:
                 _, C, H, W = x.shape
                 x = self.NL_2[NL2_counter](x)
@@ -199,7 +222,7 @@ class ResNet(nn.Module):
         if len(self.NL_3_idx) == 0:
             self.NL_3_idx = [-1]
         for i in range(len(self.layer3)):
-            x = self.layer3[i](x)
+            x = self.layer3[i](x, opt)
             if i == self.NL_3_idx[NL3_counter]:
                 _, C, H, W = x.shape
                 x = self.NL_3[NL3_counter](x)
@@ -209,7 +232,7 @@ class ResNet(nn.Module):
         if len(self.NL_4_idx) == 0:
             self.NL_4_idx = [-1]
         for i in range(len(self.layer4)):
-            x = self.layer4[i](x)
+            x = self.layer4[i](x, opt)
             if i == self.NL_4_idx[NL4_counter]:
                 _, C, H, W = x.shape
                 x = self.NL_4[NL4_counter](x)
@@ -239,7 +262,15 @@ def build_resnet_backbone(cfg):
     pretrain = cfg.MODEL.BACKBONE.PRETRAIN
     pretrain_path = cfg.MODEL.BACKBONE.PRETRAIN_PATH
     last_stride = cfg.MODEL.BACKBONE.LAST_STRIDE
-    bn_norm = cfg.MODEL.BACKBONE.NORM
+    bn_norm = cfg.MODEL.NORM.TYPE_BACKBONE
+    norm_opt = dict()
+    norm_opt['BN_AFFINE'] = cfg.MODEL.NORM.BN_AFFINE
+    norm_opt['BN_RUNNING'] = cfg.MODEL.NORM.BN_RUNNING
+    norm_opt['IN_AFFINE'] = cfg.MODEL.NORM.IN_AFFINE
+    norm_opt['IN_RUNNING'] = cfg.MODEL.NORM.IN_RUNNING
+    norm_opt['BIN_INIT'] = cfg.MODEL.NORM.BIN_INIT
+    norm_opt['IN_FC_MULTIPLY'] = cfg.MODEL.NORM.IN_FC_MULTIPLY
+    norm_opt['IN_FC_MULTIPLY'] = cfg.MODEL.NORM.IN_FC_MULTIPLY
     num_splits = cfg.MODEL.BACKBONE.NORM_SPLIT
     with_ibn = cfg.MODEL.BACKBONE.WITH_IBN
     with_se = cfg.MODEL.BACKBONE.WITH_SE
@@ -249,7 +280,7 @@ def build_resnet_backbone(cfg):
     num_blocks_per_stage = {34: [3, 4, 6, 3], 50: [3, 4, 6, 3], 101: [3, 4, 23, 3], 152: [3, 8, 36, 3], }[depth]
     nl_layers_per_stage = {34: [0, 2, 3, 0], 50: [0, 2, 3, 0], 101: [0, 2, 9, 0]}[depth]
     block = {34: BasicBlock, 50: Bottleneck, 101: Bottleneck}[depth]
-    model = ResNet(last_stride, bn_norm, num_splits, with_ibn, with_se, with_nl, block,
+    model = ResNet(last_stride, bn_norm, norm_opt, num_splits, with_ibn, with_se, with_nl, block,
                    num_blocks_per_stage, nl_layers_per_stage)
     if pretrain:
         if not with_ibn:
@@ -277,7 +308,39 @@ def build_resnet_backbone(cfg):
                     new_state_dict[new_k] = state_dict[k]
             state_dict = new_state_dict
             logger.info(f"Loading pretrained model from {pretrain_path}")
+
+        for name, param in state_dict.copy().items():
+
+            if 'downsample' in name:  # layer1.0.downsample.0.weight
+                new_name = name.split('.')
+                if new_name[-2] == '0':
+                    new_name[-2] = 'conv'
+                elif new_name[-2] == '1':
+                    new_name[-2] = 'bn'
+                new_name = '.'.join(new_name)
+                state_dict[new_name] = copy.copy(state_dict[name])
+                del state_dict[name]
+
+
+        if not cfg.MODEL.NORM.LOAD_BN_AFFINE:
+            for name, param in state_dict.copy().items():
+                if ('bn' in name) or ('norm' in name):
+                    if ('weight' in name) or ('bias' in name):
+                        del state_dict[name]
+        if not cfg.MODEL.NORM.LOAD_BN_RUNNING:
+            for name, param in state_dict.copy().items():
+                if ('bn' in name) or ('norm' in name):
+                    if ('running_mean' in name) or ('running_var' in name):
+                        del state_dict[name]
+        if not cfg.MODEL.NORM.IN_RUNNING and cfg.MODEL.NORM.TYPE_BACKBONE == "IN":
+            for name, param in state_dict.copy().items():
+                if ('bn' in name) or ('norm' in name):
+                    if ('running_mean' in name) or ('running_var' in name):
+                        del state_dict[name]
+
         incompatible = model.load_state_dict(state_dict, strict=False)
+
+
         if incompatible.missing_keys:
             logger.info(
                 get_missing_parameters_message(incompatible.missing_keys)

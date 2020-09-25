@@ -71,14 +71,15 @@ class BIN_gate(_BatchNorm):
             input, self.running_mean, self.running_var, bn_w, self.bias,
             self.training, self.momentum, self.eps)
 
-        # Instance norm (2D)
-        if input.size(2) != 1:
+        # Instance norm
+        if input.size(2) != 1: # 2D
             b, c = input.size(0), input.size(1)
             if self.affine:
                 in_w = self.weight * (1 - self.gate)
             else:
                 in_w = 1 - self.gate
             input = input.view(1, b * c, *input.size()[2:])
+            # input, running_mean, running_var, weight=None, bias=None, training=False, momentum=0.1, eps=1e-05
             out_in = F.batch_norm(
                 input, None, None, None, None,
                 True, self.momentum, self.eps)
@@ -87,7 +88,7 @@ class BIN_gate(_BatchNorm):
 
             return out_bn + out_in
         else:
-            return out_bn
+            return out_bn # 1D
 
 
 class IBN(nn.Module):
