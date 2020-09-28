@@ -79,9 +79,9 @@ META:
       INNER_LOOP: 1 # basic init training depends on total iteration
       OUTER_LOOP: 1 # meta-training
       TYPE_RUNNING_STATS: "general" # "general", "hold", "eval"
-      # general: w,b is trained, running_stats are updated
-      # hold: w,b is trained, running_stats are stopped
-      # eval: w,b is not trained, running_stats are applied
+      # general-> w,b is trained, running_stats are updated
+      # hold-> w,b is trained, running_stats are stopped
+      # eval-> w,b is not trained, running_stats are applied
 
     MTRAIN:
       INNER_LOOP: 1 # [Not yet] inner loop in meta-train
@@ -137,8 +137,8 @@ MODEL:
     BIN_INIT: 'one' # 'random', 'one', 'zero', 'half' (optional)
     IN_FC_MULTIPLY: 0.0 # applied when "IN" in fc
 
-    LOAD_BN_AFFINE: True # (optional)
-    LOAD_BN_RUNNING: True # change to False when TYPE_BACKBONE = "IN" & IN_RUNNING = False (optional)
+    LOAD_BN_AFFINE: False # (optional)
+    LOAD_BN_RUNNING: False # change to False when TYPE_BACKBONE = "IN" & IN_RUNNING = False (optional)
 
     TYPE_BACKBONE: "BIN_gate1"
     TYPE_BOTTLENECK: "BN" # "BN", "BIN_half", "BIN_gate1" (original), "BIN_gate2" [IN_FC_MULTIPLY]

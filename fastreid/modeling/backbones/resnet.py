@@ -270,7 +270,6 @@ def build_resnet_backbone(cfg):
     norm_opt['IN_RUNNING'] = cfg.MODEL.NORM.IN_RUNNING
     norm_opt['BIN_INIT'] = cfg.MODEL.NORM.BIN_INIT
     norm_opt['IN_FC_MULTIPLY'] = cfg.MODEL.NORM.IN_FC_MULTIPLY
-    norm_opt['IN_FC_MULTIPLY'] = cfg.MODEL.NORM.IN_FC_MULTIPLY
     num_splits = cfg.MODEL.BACKBONE.NORM_SPLIT
     with_ibn = cfg.MODEL.BACKBONE.WITH_IBN
     with_se = cfg.MODEL.BACKBONE.WITH_SE

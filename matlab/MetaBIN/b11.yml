@@ -79,9 +79,9 @@ META:
       INNER_LOOP: 1 # basic init training depends on total iteration
       OUTER_LOOP: 1 # meta-training
       TYPE_RUNNING_STATS: "general" # "general", "hold", "eval"
-      # general: w,b is trained, running_stats are updated
-      # hold: w,b is trained, running_stats are stopped
-      # eval: w,b is not trained, running_stats are applied
+      # general-> w,b is trained, running_stats are updated
+      # hold-> w,b is trained, running_stats are stopped
+      # eval-> w,b is not trained, running_stats are applied
 
     MTRAIN:
       INNER_LOOP: 1 # [Not yet] inner loop in meta-train
@@ -134,7 +134,7 @@ MODEL:
     BN_RUNNING: True # apply running mean, var (required)
     IN_AFFINE: True # learn w,b (optional)
     IN_RUNNING: True # apply running mean, var (optional)
-    BIN_INIT: 'one' # 'random', 'one', 'zero', 'half' (optional)
+    BIN_INIT: 'half' # 'random', 'one', 'zero', 'half' (optional)
     IN_FC_MULTIPLY: 0.0 # applied when "IN" in fc
 
     LOAD_BN_AFFINE: True # (optional)

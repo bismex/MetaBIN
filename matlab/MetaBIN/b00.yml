@@ -18,7 +18,7 @@ META:
     NORM: True # norm after bottleneck layer
 
   DATA:
-    NAMES: "DG" # 'VeRi_keypoint_each_4', 'DG'
+    NAMES: "" # 'VeRi_keypoint_each_4', 'DG'
     LOADER_FLAG: 'diff' # "each"(3), "diff"(2), "same"(1)
 
     # enable when LOADER_FLAG is 'each' or 'diff'
@@ -79,9 +79,9 @@ META:
       INNER_LOOP: 1 # basic init training depends on total iteration
       OUTER_LOOP: 1 # meta-training
       TYPE_RUNNING_STATS: "general" # "general", "hold", "eval"
-      # general: w,b is trained, running_stats are updated
-      # hold: w,b is trained, running_stats are stopped
-      # eval: w,b is not trained, running_stats are applied
+      # general-> w,b is trained, running_stats are updated
+      # hold-> w,b is trained, running_stats are stopped
+      # eval-> w,b is not trained, running_stats are applied
 
     MTRAIN:
       INNER_LOOP: 1 # [Not yet] inner loop in meta-train

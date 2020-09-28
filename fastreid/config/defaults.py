@@ -79,7 +79,8 @@ _C.META.SOLVER.MTEST.TYPE_RUNNING_STATS = "general" # "general", "hold", "eval"
 _C.META.SOLVER.SYNC = True # True-> sync
 _C.META.SOLVER.DETAIL_MODE = False # True-> print detail info
 _C.META.SOLVER.STOP_GRADIENT = False
-_C.META.SOLVER.MANUAL_ZERO_GRAD = True # True-> optimizer.zero_grad & weight.grad = None
+_C.META.SOLVER.MANUAL_ZERO_GRAD = 'zero' # 'zero', 'delete', 'hold' [delete->high memory, but completely delete] weight.grad = None
+_C.META.SOLVER.MANUAL_MEMORY_EMPTY = True
 
 _C.META.LOSS = CN()
 _C.META.LOSS.COMBINED = False # True: Mtotal = Mtrain + Mtest
@@ -166,7 +167,7 @@ _C.MODEL.LOSSES.CE.SCALE = 1.0
 _C.MODEL.LOSSES.TRI = CN()
 _C.MODEL.LOSSES.TRI.MARGIN = 0.3
 _C.MODEL.LOSSES.TRI.NORM_FEAT = False
-_C.MODEL.LOSSES.TRI.HARD_MINING = True
+_C.MODEL.LOSSES.TRI.HARD_MINING = False
 _C.MODEL.LOSSES.TRI.SCALE = 1.0
 
 # Circle Loss options

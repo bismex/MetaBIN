@@ -200,6 +200,7 @@ class DefaultTrainer(SimpleTrainer):
             meta_param['detail_mode'] = cfg.META.SOLVER.DETAIL_MODE
             meta_param['stop_gradient'] = cfg.META.SOLVER.STOP_GRADIENT
             meta_param['flag_manual_zero_grad'] = cfg.META.SOLVER.MANUAL_ZERO_GRAD
+            meta_param['flag_manual_memory_empty'] = cfg.META.SOLVER.MANUAL_MEMORY_EMPTY
 
             meta_param['loss_combined'] = cfg.META.LOSS.COMBINED
             meta_param['loss_weight'] = cfg.META.LOSS.WEIGHT

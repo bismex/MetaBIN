@@ -58,6 +58,7 @@ class MetalearningHead(nn.Module):
         # BNNeck
         self.neck_feat = cfg.MODEL.HEADS.NECK_FEAT
         self.classifier_norm = meta_norm(cfg.MODEL.NORM.TYPE_CLASSIFIER, in_feat, norm_opt=norm_opt, bias_freeze=True)
+        # self.classifier_norm = meta_norm(cfg.MODEL.NORM.TYPE_CLASSIFIER, in_feat, norm_opt=norm_opt)
 
         # identity classification layer
         cls_type = cfg.MODEL.HEADS.CLS_LAYER
@@ -86,7 +87,7 @@ class MetalearningHead(nn.Module):
 
         if self.classifier_fc.__class__.__name__ in ['Linear', 'meta_linear']:
             cls_outputs = self.classifier_fc(bn_feat, opt)
-            pred_class_logits = self.classifier_fc(bn_feat, opt) # compute accuracy
+            pred_class_logits = F.linear(bn_feat, self.classifier_fc.weight) # compute accuracy
         else:
             cls_outputs = self.classifier_fc(bn_feat, targets)
             pred_class_logits = self.classifier_fc.s * \
