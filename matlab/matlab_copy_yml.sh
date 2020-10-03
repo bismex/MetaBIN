@@ -1,1 +1,1 @@
-matlab -nodisplay -r "copy_yml('./MetaBIN/b01.yml', 2, 20); exit" 
+matlab -nodisplay -r "copy_yml('./MetaBIN/b59.yml', 60, 70); exit" 

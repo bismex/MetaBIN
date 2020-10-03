@@ -1,0 +1,198 @@
+
+INPUT:
+  SIZE_TRAIN: [256, 128] # vehicle: [256,256]
+  SIZE_TEST: [256, 128] # vehicle: [256,256]
+  DO_AUTOAUG: False
+  CJ:
+    ENABLED: False
+  DO_AUGMIX: False
+  RPT:
+    ENABLED: False
+  REA:
+    ENABLED: False
+
+META:
+  BOTTLENECK:
+    DO_IT: False # bottleneck layer
+    REDUCTION_DIM: 1024 
+    NORM: True # norm after bottleneck layer
+
+  DATA:
+    NAMES: "DG" # 'VeRi_keypoint_each_4', 'DG'
+    LOADER_FLAG: 'diff' # "each"(3), "diff"(2), "same"(1)
+
+    # enable when LOADER_FLAG is 'each' or 'diff'
+    NAIVE_WAY: False # True-> random, False-> same domain
+    DELETE_REM: False # True-> fill in samples as a multiply of num_instance when the num of samples is more than num_instance (automatically fill in samples when less than num_instance)
+    INDIVIDUAL: False # True-> split dataloader (high memory requirements)
+    DROP_LAST: True
+
+    MTRAIN_MINI_BATCH: 80 # should be a multiply of num_domain x num_instance
+    MTRAIN_NUM_INSTANCE: 4
+    MTEST_MINI_BATCH: 80 # should be a multiply of num_domain x num_instance
+    MTEST_NUM_INSTANCE: 4
+
+  MODEL:
+    META_COMPUTE_LAYER: ('backbone_bn_gate','backbone_bn',)
+#    META_COMPUTE_LAYER: ('backbone_conv','backbone_bn','backbone_bn_gate',)
+    META_UPDATE_LAYER: ('backbone_bn_gate',)
+
+  # compute_meta_params = True
+  # 'layer1_conv' -> conv of layer1 (including downsample)
+  # 'backbone_conv' -> conv of entire layers (including downsample)
+  # 'layer1_bn' -> BN of layer1 (including downsample)
+  # 'backbone_bn' -> BN of entire layers (including downsample)
+  # 'backbone' -> all backbone (including conv, BN, BIN_gate)
+  # 'heads' -> all heads (including conv, BN, BIN_gate)
+  # 'classifier_fc' -> linear layer for CE
+  # 'classifier_norm' -> BN of BNNECK (normalization) [HEADS.NORM]
+  # 'bottleneck_fc' -> linear layer for bottleneck
+  # 'bottleneck_norm' -> BN of bottleneck [HEADS.BT_NORM]
+
+  # compute_meta_gates = True, need clamp
+  # 'bottleneck_norm_gate' -> BIN_gate of bottleneck [HEADS.BT_NORM = 'BIN_gate']
+  # 'classifier_norm_gate' -> BIN_gate of neck_norm [HEADS.NORM = 'BIN_gate']
+  # 'layer1_bn_gate' -> BIN_gate of layer1 (including downsample) [BACKBONE.NORM = 'BIN_gate']
+  # 'backbone_bn_gate' -> BIN_gate of entire layers (including downsample) [BACKBONE.NORM = 'BIN_gate']
+
+  # Exceptions
+  # backbone.conv1 when 'layer0' or 'layer0_conv'
+  # backbone.bn1 when 'layer0' or 'layer0_bn'
+  # backbone.layer1.0.downsample.0 <- backbone.layer1.0.conv1
+  # backbone.layer1.0.downsample.1 <- backbone.layer1.0.bn1
+  # backbone.layer2.0.downsample.0 <- backbone.layer2.0.conv1
+  # backbone.layer2.0.downsample.1 <- backbone.layer2.0.bn1
+  # backbone.layer3.0.downsample.0 <- backbone.layer3.0.conv1
+  # backbone.layer3.0.downsample.1 <- backbone.layer3.0.bn1
+  # backbone.layer4.0.downsample.0 <- backbone.layer4.0.conv1
+  # backbone.layer4.0.downsample.1 <- backbone.layer4.0.bn1
+
+  # MLDG -> compute == update -> 'layer', 'heads'
+
+
+  SOLVER:
+
+    LR_FACTOR:
+      GATE: 1.0 # bigger -> fast update
+      META_UPDATE: 1.0 # bigger -> meta_train ratio
+      # MTrain-stepsize -> B_LR*(Compute param LR)*META_UPDATE (if gate)
+      # MTest-stepsize -> B_LR*GATE(Update param LR)
+
+    INIT:
+      INNER_LOOP: 1 # basic init training depends on total iteration (num of backward)
+      OUTER_LOOP: 1 # meta-training (num of backward) [Shuffled]
+      TYPE_RUNNING_STATS: "general" # "general", "hold", "eval"
+      # general-> w,b is trained, running_stats are updated
+      # hold-> w,b is trained, running_stats are stopped
+      # eval-> w,b is not trained, running_stats are applied
+
+    MTRAIN:
+      INNER_LOOP: 1 # Accumulate losses [Select Shuffle]
+      SHUFFLE_DOMAIN: True # True->shuffle domain when outerloop
+      SECOND_ORDER: False # [True fix!] second order
+      ALLOW_UNUSED: False # [False->low memory/True->high memory] False->MLDG, True->MAML
+      NUM_DOMAIN: 3
+      FREEZE_GRAD_META: True # [True->low memory] freeze gradient_requires w/o update and compute parameters
+      BEFORE_ZERO_GRAD: True # [?] False->MLDG, True->MAML
+      TYPE_RUNNING_STATS: "general" # "general", "hold", "eval"
+
+    MTEST:
+      ONLY_ONE_DOMAIN: False # True-> only use one domain in meta-test
+      TYPE_RUNNING_STATS: "general" # "general", "hold", "eval"
+
+    SYNC: True # [True]
+    DETAIL_MODE: True # True-> print detail info
+    STOP_GRADIENT: True # [False->slow..]
+    MANUAL_ZERO_GRAD: 'delete' # 'zero', 'delete', 'hold' [delete->high memory, but completely delete] weight.grad = None
+    MANUAL_MEMORY_EMPTY: False # [True->slow, but low memory]
+
+  LOSS:
+    COMBINED: False # True-> Mtotal = Mtrain + Mtest
+    WEIGHT: 1.0 # w * MTRAIN + MTEST (when combined)
+    MTRAIN_NAME: ("TripletLoss_mtrain",) # "CrossEntropyLoss", "TripletLoss"
+    MTEST_NAME: ("CrossEntropyLoss", "TripletLoss_mtest",) # "CrossEntropyLoss", "TripletLoss"
+
+
+MODEL:
+  META_ARCHITECTURE: "Metalearning"
+  BACKBONE:
+    WITH_IBN: False  # 'pretrained/resnet50_ibn_a.pth'
+    WITH_NL: False
+    PRETRAIN: True
+    PRETRAIN_PATH: ''
+  HEADS:
+    NAME: "MetalearningHead"
+    POOL_LAYER: "fastavgpool" # 'fastavgpool', 'avgpool', 'maxpool', 'gempoolP', 'gempool', 'avgmaxpool', 'clipavgpool', 'identity'
+    CLS_LAYER: "linear" # 'linear', 'arcSoftmax(x)', 'circleSoftmax', 'amSoftmax(poor)'
+    NECK_FEAT: "before"  # before, after
+  LOSSES:
+    CE:
+      EPSILON: 0.1 # 0, 0.1
+    TRI:
+      HARD_MINING: True
+      MARGIN: 0.3
+    TRI_MTRAIN:
+      HARD_MINING: True
+      MARGIN: 0.3
+      NORM_FEAT: False
+      NEW_POS: [ 1,0,0 ]
+      NEW_NEG: [ 0,1,1 ]
+    TRI_MTEST:
+      HARD_MINING: True
+      MARGIN: 0.3
+      NORM_FEAT: False
+      NEW_POS: [ 1,0,0 ]
+      NEW_NEG: [ 0,1,1 ]
+    NAME: ("CrossEntropyLoss","TripletLoss",) # "CrossEntropyLoss", "TripletLoss","CircleLoss"
+  NORM:
+    BN_AFFINE: True # learn w,b (required)
+    BN_RUNNING: True # apply running mean, var (required)
+    IN_AFFINE: True # learn w,b (optional)
+    IN_RUNNING: True # apply running mean, var (optional)
+    BIN_INIT: 'one' # 'random', 'one', 'zero', 'half' (optional)
+    IN_FC_MULTIPLY: 0.0 # applied when "IN" in fc
+
+    LOAD_BN_AFFINE: True # (optional)
+    LOAD_BN_RUNNING: True # change to False when TYPE_BACKBONE = "IN" & IN_RUNNING = False (optional)
+
+    TYPE_BACKBONE: "BIN_gate1"
+    TYPE_BOTTLENECK: "BN" # "BN", "BIN_half", "BIN_gate1" (original), "BIN_gate2" [IN_FC_MULTIPLY]
+    TYPE_CLASSIFIER: "BN" #
+
+DATASETS:
+  NAMES: ("DG_CUHK02", "DG_CUHK03_detected", "DG_Market1501", "DG_DukeMTMC", "DG_CUHK_SYSU",)
+  # "DG_CUHK02", "DG_CUHK03_detected", "DG_Market1501", "DG_DukeMTMC", "DG_CUHK_SYSU", "DG_CUHK03_labeled"
+  TESTS: ("ALL_GRID", "ALL_VIPER_only_10", "ALL_PRID") # DG_VIPeR, Market1501, ALL_VIPER_only_5, ALL_VIPER_5, ALL_PRID, PRID, GRID
+#  TESTS: ("ALL_GRID",) # DG_VIPeR, Market1501, ALL_VIPER_only_5, ALL_VIPER_5, ALL_PRID, PRID, GRID
+
+DATALOADER:
+  NUM_INSTANCE: 4
+  NUM_WORKERS: 3
+  NAIVE_WAY: True # True-> random, False-> same domain
+  DELETE_REM: False # when false -> more images
+  INDIVIDUAL: False
+
+SOLVER:
+  AMP: True
+  OPT: "SGD" # SGD
+  BASE_LR: 0.01 # 0.01
+#  BASE_LR: 0.1 # 0.01
+  ETA_MIN_LR: 7.7e-5
+
+  MAX_ITER: 70 # vehicle: 100
+  STEPS: [30, 50] # vehicle: [40, 70]
+
+  WARMUP_FACTOR: 0.01
+  WARMUP_ITERS: 10
+
+  CHECKPOINT_PERIOD: 10
+  IMS_PER_BATCH: 80 # per each domain -> 80 : 5000MiB
+  WEIGHT_DECAY: 0.0005
+  WEIGHT_DECAY_BIAS: 0.0005
+  WRITE_PERIOD: 100
+  MOMENTUM: 0.9
+
+TEST:
+  EVAL_PERIOD: 5
+  IMS_PER_BATCH: 128
+  REPORT_ALL: False

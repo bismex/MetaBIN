@@ -6,6 +6,7 @@
 
 import torch
 import torch.nn.functional as F
+import copy
 
 from fastreid.utils import comm
 from .utils import concat_all_gather, euclidean_dist, normalize
@@ -81,7 +82,7 @@ def weighted_example_mining(dist_mat, is_pos, is_neg):
     return dist_ap, dist_an
 
 
-def triplet_loss(embedding, targets, margin, norm_feat, hard_mining):
+def triplet_loss(embedding, targets, margin, norm_feat, hard_mining, domain_labels = None, pos_flag = [1,0,0], neg_flag = [0,0,1]):
     r"""Modified from Tong Xiao's open-reid (https://github.com/Cysu/open-reid).
     Related Triplet Loss theory can be found in paper 'In Defense of the Triplet
     Loss for Person Re-Identification'."""
@@ -99,8 +100,40 @@ def triplet_loss(embedding, targets, margin, norm_feat, hard_mining):
     dist_mat = euclidean_dist(all_embedding, all_embedding)
 
     N = dist_mat.size(0)
-    is_pos = all_targets.view(N, 1).expand(N, N).eq(all_targets.view(N, 1).expand(N, N).t())
-    is_neg = all_targets.view(N, 1).expand(N, N).ne(all_targets.view(N, 1).expand(N, N).t())
+    if (pos_flag == [1,0,0] and neg_flag == [0,1,1]) or domain_labels == None:
+        is_pos = all_targets.view(N, 1).expand(N, N).eq(all_targets.view(N, 1).expand(N, N).t())
+        is_neg = all_targets.view(N, 1).expand(N, N).ne(all_targets.view(N, 1).expand(N, N).t())
+    else:
+        vec1 = copy.deepcopy(all_targets)
+        for i in range(N):
+            vec1[i] = i # [0,1,2,3,4,~~]
+        is_same_img = vec1.expand(N, N).eq(vec1.expand(N, N).t())
+        is_same_instance = all_targets.view(N, 1).expand(N, N).eq(all_targets.view(N, 1).expand(N, N).t())
+        is_same_domain = domain_labels.view(N, 1).expand(N, N).eq(domain_labels.view(N, 1).expand(N, N).t())
+
+        set0 = is_same_img
+
+        set_all = []
+        set_all.extend([is_same_instance * (is_same_img == False)])
+        set_all.extend([(is_same_instance == False) * (is_same_domain == True)])
+        set_all.extend([is_same_domain == False])
+
+        is_pos = copy.deepcopy(set0)
+        is_neg = copy.deepcopy(set0==False)
+        is_neg[:] = False
+        for i, bool_flag in enumerate(pos_flag):
+            if bool_flag == 1:
+                is_pos += set_all[i]
+
+        for i, bool_flag in enumerate(neg_flag):
+            if bool_flag == 1:
+                is_neg += set_all[i]
+
+        # print(pos_flag)
+        # print(is_pos.type(torch.IntTensor))
+        # print(neg_flag)
+        # print(is_neg.type(torch.IntTensor))
+
 
     if hard_mining:
         dist_ap, dist_an = hard_example_mining(dist_mat, is_pos, is_neg)
@@ -110,6 +143,7 @@ def triplet_loss(embedding, targets, margin, norm_feat, hard_mining):
     y = dist_an.new().resize_as_(dist_an).fill_(1)
 
     if margin > 0:
+        # all(sum(is_pos) == 1)
         loss = F.margin_ranking_loss(dist_an, dist_ap, y, margin=margin)
     else:
         loss = F.soft_margin_loss(dist_an - dist_ap, y)
@@ -118,3 +152,4 @@ def triplet_loss(embedding, targets, margin, norm_feat, hard_mining):
         # fmt: on
 
     return loss
+

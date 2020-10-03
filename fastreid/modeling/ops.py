@@ -80,9 +80,9 @@ class meta_linear(nn.Linear):
         if use_meta_learning:
 
             start = time.perf_counter()
-            if opt['zero_grad']: self.zero_grad()
-            updated_weight = update_parameter(self.weight, opt['meta_loss'], opt['use_second_order'], opt['allow_unused'], opt['stop_gradient'], self.w_step_size)
-            updated_bias = update_parameter(self.bias, opt['meta_loss'], opt['use_second_order'], opt['allow_unused'], opt['stop_gradient'], self.b_step_size)
+            # if opt['zero_grad']: self.zero_grad()
+            updated_weight = update_parameter(self.weight, self.w_step_size, opt)
+            updated_bias = update_parameter(self.bias, self.b_step_size, opt)
             # print('meta_linear is computed')
             print(time.perf_counter() - start)
 
@@ -104,9 +104,9 @@ class meta_conv2d(nn.Conv2d):
         else:
             use_meta_learning = False
         if use_meta_learning:
-            if opt['zero_grad']: self.zero_grad()
-            updated_weight = update_parameter(self.weight, opt['meta_loss'], opt['use_second_order'], opt['allow_unused'], opt['stop_gradient'], self.w_step_size)
-            updated_bias = update_parameter(self.bias, opt['meta_loss'], opt['use_second_order'], opt['allow_unused'], opt['stop_gradient'], self.b_step_size)
+            # if opt['zero_grad']: self.zero_grad()
+            updated_weight = update_parameter(self.weight, self.w_step_size, opt)
+            updated_bias = update_parameter(self.bias, self.b_step_size, opt)
             # print('meta_conv is computed')
             return F.conv2d(inputs, updated_weight, updated_bias, self.stride, self.padding, self.dilation, self.groups)
         else:
@@ -146,9 +146,9 @@ class Meta_bn_norm(nn.BatchNorm2d):
             norm_type = "eval"
 
         if use_meta_learning and self.affine:
-            if opt['zero_grad']: self.zero_grad()
-            updated_weight = update_parameter(self.weight, opt['meta_loss'], opt['use_second_order'], opt['allow_unused'], opt['stop_gradient'], self.w_step_size)
-            updated_bias = update_parameter(self.bias, opt['meta_loss'], opt['use_second_order'], opt['allow_unused'], opt['stop_gradient'], self.b_step_size)
+            # if opt['zero_grad']: self.zero_grad()
+            updated_weight = update_parameter(self.weight, self.w_step_size, opt)
+            updated_bias = update_parameter(self.bias, self.b_step_size, opt)
             # print('meta_bn is computed')
 
             if norm_type == "general":
@@ -213,9 +213,9 @@ class Meta_in_norm(nn.InstanceNorm2d):
             else:
                 use_meta_learning = False
             if use_meta_learning and self.affine:
-                if opt['zero_grad']: self.zero_grad()
-                updated_weight = update_parameter(self.weight, opt['meta_loss'], opt['use_second_order'], opt['allow_unused'], opt['stop_gradient'], self.w_step_size)
-                updated_bias = update_parameter(self.bias, opt['meta_loss'], opt['use_second_order'], opt['allow_unused'], opt['stop_gradient'], self.b_step_size)
+                # if opt['zero_grad']: self.zero_grad()
+                updated_weight = update_parameter(self.weight, self.w_step_size, opt)
+                updated_bias = update_parameter(self.bias, self.b_step_size, opt)
                 # print('meta_bn is computed')
             else:
                 updated_weight = self.weight
@@ -301,16 +301,16 @@ class Meta_bin_gate_ver1(nn.BatchNorm2d):
             use_meta_learning = False
             use_meta_learning_gates = False
         if use_meta_learning and self.affine:
-            if opt['zero_grad']: self.zero_grad()
-            updated_weight = update_parameter(self.weight, opt['meta_loss'], opt['use_second_order'], opt['allow_unused'], opt['stop_gradient'], self.w_step_size)
-            updated_bias = update_parameter(self.bias, opt['meta_loss'], opt['use_second_order'], opt['allow_unused'], opt['stop_gradient'], self.b_step_size)
+            # if opt['zero_grad']: self.zero_grad()
+            updated_weight = update_parameter(self.weight, self.w_step_size, opt)
+            updated_bias = update_parameter(self.bias, self.b_step_size, opt)
             # print('meta_bn is computed')
         else:
             updated_weight = self.weight
             updated_bias = self.bias
 
         if use_meta_learning_gates:
-            update_gate = update_parameter(self.gate, opt['meta_loss'], opt['use_second_order'], opt['allow_unused'], opt['stop_gradient'], self.g_step_size, opt)
+            update_gate = update_parameter(self.gate, self.g_step_size, opt)
             update_gate.data.clamp_(min=0, max=1)
             # print(update_gate[0].data.cpu())
         else:
@@ -350,7 +350,7 @@ class Meta_bin_gate_ver1(nn.BatchNorm2d):
                 in_w = 1 - update_gate
             inputs = inputs.view(1, b * c, *inputs.size()[2:])
             out_in = F.batch_norm(inputs, None, None, None, None,
-                                  self.training, self.momentum, self.eps)
+                                  True, self.momentum, self.eps)
 
             out_in = out_in.view(b, c, *inputs.size()[2:])
             out_in.mul_(in_w[None, :, None, None])
@@ -382,40 +382,42 @@ class Meta_bin_gate_ver2(nn.Module): # bn / in version
         out = torch.cat((out1, out2), 1)
 
         return out
-def update_parameter(param, loss, use_second_order, allow_unused, stop_gradient, step_size, opt = None):
+def update_parameter(param, step_size, opt = None):
+    loss = opt['meta_loss']
+    use_second_order = opt['use_second_order']
+    allow_unused = opt['allow_unused']
+    stop_gradient = opt['stop_gradient']
+
     flag_update = False
     if step_size is not None:
         if not stop_gradient:
             if param is not None:
-
-                # inner
-                # grad = autograd.grad(loss, param, create_graph=use_second_order, allow_unused=allow_unused)[0]
-                # updated_param = param - step_size * grad
-
-                # outer
-                updated_param = param - step_size * opt['grad_params'][0]
-                del opt['grad_params'][0]
-
+                if opt['auto_grad_outside']:
+                    # outer
+                    updated_param = param - step_size * opt['grad_params'][0]
+                    del opt['grad_params'][0]
+                else:
+                    # inner
+                    grad = autograd.grad(loss, param, create_graph=use_second_order, allow_unused=allow_unused)[0]
+                    updated_param = param - step_size * grad
                 # outer update
                 # updated_param = opt['grad_params'][0]
                 # del opt['grad_params'][0]
-
                 flag_update = True
         else:
             if param is not None:
-                # inner
-                # grad = Variable(autograd.grad(loss, param, create_graph=use_second_order, allow_unused=allow_unused)[0].data, requires_grad=False)
-                # updated_param = param - step_size * grad
 
-                # outer
-                updated_param = param - step_size * opt['grad_params'][0]
-                del opt['grad_params'][0]
-
+                if opt['auto_grad_outside']:
+                    # outer
+                    updated_param = param - step_size * opt['grad_params'][0]
+                    del opt['grad_params'][0]
+                else:
+                    # inner
+                    grad = Variable(autograd.grad(loss, param, create_graph=use_second_order, allow_unused=allow_unused)[0].data, requires_grad=False)
+                    updated_param = param - step_size * grad
                 # outer update
                 # updated_param = opt['grad_params'][0]
                 # del opt['grad_params'][0]
-
-
                 flag_update = True
     if not flag_update:
         return param

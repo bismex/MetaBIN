@@ -9,6 +9,7 @@ from torch import nn
 from fastreid.modeling.backbones import build_backbone
 from fastreid.modeling.heads import build_reid_heads
 from fastreid.modeling.losses import *
+# from fastreid.modeling.losses.utils import log_accuracy
 from .build import META_ARCH_REGISTRY
 import copy
 
@@ -71,14 +72,49 @@ class Metalearning(nn.Module):
 
         outputs           = outs["outputs"]
         gt_labels         = outs["targets"]
+        if 'domains' in outs.keys():
+            domain_labels = outs['domains']
+        else:
+            domain_labels = None
 
         pred_class_logits = outputs['pred_class_logits'].detach()
         cls_outputs       = outputs['cls_outputs']
         pred_features     = outputs['features']
 
+
         loss_names = opt['loss']
         loss_dict = {}
         log_accuracy(pred_class_logits, gt_labels) # Log prediction accuracy
+
+
+
+        if "STD" in loss_names:
+            loss_dict['loss_std'] = domain_STD_loss(
+                pred_features,
+                domain_labels,
+                self._cfg.MODEL.LOSSES.STD.NORM,
+                self._cfg.MODEL.LOSSES.STD.TYPE,
+                self._cfg.MODEL.LOSSES.STD.LOG_SCALE,
+            ) * self._cfg.MODEL.LOSSES.STD.SCALE
+
+        if "JSD" in loss_names:
+            loss_dict['loss_jsd'] = domain_JSD_loss(
+                pred_features,
+                domain_labels,
+                self._cfg.MODEL.LOSSES.JSD.NORM,
+            ) * self._cfg.MODEL.LOSSES.JSD.SCALE
+
+        if "MMD" in loss_names:
+            scales = 1.0
+            loss_dict['loss_mmd'] = domain_MMD_loss(
+                pred_features,
+                domain_labels,
+                self._cfg.MODEL.LOSSES.MMD.NORM,
+                self._cfg.MODEL.LOSSES.MMD.NORM_FLAG,
+                self._cfg.MODEL.LOSSES.MMD.KERNEL_MUL,
+                self._cfg.MODEL.LOSSES.MMD.KERNEL_NUM,
+                self._cfg.MODEL.LOSSES.MMD.FIX_SIGMA,
+            ) * self._cfg.MODEL.LOSSES.MMD.SCALE
 
         if "CrossEntropyLoss" in loss_names:
             loss_dict['loss_cls'] = cross_entropy_loss(
@@ -88,6 +124,7 @@ class Metalearning(nn.Module):
                 self._cfg.MODEL.LOSSES.CE.ALPHA,
             ) * self._cfg.MODEL.LOSSES.CE.SCALE
 
+
         if "TripletLoss" in loss_names:
             loss_dict['loss_triplet'] = triplet_loss(
                 pred_features,
@@ -95,7 +132,36 @@ class Metalearning(nn.Module):
                 self._cfg.MODEL.LOSSES.TRI.MARGIN,
                 self._cfg.MODEL.LOSSES.TRI.NORM_FEAT,
                 self._cfg.MODEL.LOSSES.TRI.HARD_MINING,
+                domain_labels,
+                self._cfg.MODEL.LOSSES.TRI.NEW_POS,
+                self._cfg.MODEL.LOSSES.TRI.NEW_NEG,
             ) * self._cfg.MODEL.LOSSES.TRI.SCALE
+
+
+        if "TripletLoss_mtrain" in loss_names:
+            loss_dict['loss_triplet_mtrain'] = triplet_loss(
+                pred_features,
+                gt_labels,
+                self._cfg.MODEL.LOSSES.TRI_MTRAIN.MARGIN,
+                self._cfg.MODEL.LOSSES.TRI_MTRAIN.NORM_FEAT,
+                self._cfg.MODEL.LOSSES.TRI_MTRAIN.HARD_MINING,
+                domain_labels,
+                self._cfg.MODEL.LOSSES.TRI_MTRAIN.NEW_POS,
+                self._cfg.MODEL.LOSSES.TRI_MTRAIN.NEW_NEG,
+            ) * self._cfg.MODEL.LOSSES.TRI_MTRAIN.SCALE
+
+
+        if "TripletLoss_mtest" in loss_names:
+            loss_dict['loss_triplet_mtest'] = triplet_loss(
+                pred_features,
+                gt_labels,
+                self._cfg.MODEL.LOSSES.TRI_MTEST.MARGIN,
+                self._cfg.MODEL.LOSSES.TRI_MTEST.NORM_FEAT,
+                self._cfg.MODEL.LOSSES.TRI_MTEST.HARD_MINING,
+                domain_labels,
+                self._cfg.MODEL.LOSSES.TRI_MTEST.NEW_POS,
+                self._cfg.MODEL.LOSSES.TRI_MTEST.NEW_NEG,
+            ) * self._cfg.MODEL.LOSSES.TRI_MTEST.SCALE
 
         if "CircleLoss" in loss_names:
             loss_dict['loss_circle'] = circle_loss(

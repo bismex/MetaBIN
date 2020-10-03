@@ -9,24 +9,6 @@ import torch.nn.functional as F
 from fastreid.utils.events import get_event_storage
 
 
-def log_accuracy(pred_class_logits, gt_classes, topk=(1,)):
-    """
-    Log the accuracy metrics to EventStorage.
-    """
-    bsz = pred_class_logits.size(0)
-    maxk = max(topk)
-    _, pred_class = pred_class_logits.topk(maxk, 1, True, True)
-    pred_class = pred_class.t()
-    correct = pred_class.eq(gt_classes.view(1, -1).expand_as(pred_class))
-
-    ret = []
-    for k in topk:
-        correct_k = correct[:k].view(-1).float().sum(dim=0, keepdim=True)
-        ret.append(correct_k.mul_(1. / bsz))
-
-    storage = get_event_storage()
-    storage.put_scalar("cls_accuracy", ret[0])
-
 
 def cross_entropy_loss(pred_class_logits, gt_classes, eps, alpha=0.2):
     num_classes = pred_class_logits.size(1)

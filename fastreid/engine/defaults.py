@@ -166,6 +166,7 @@ class DefaultTrainer(SimpleTrainer):
         model = self.build_model(cfg)
         optimizer = self.build_optimizer(cfg, model) # params, lr, momentum, ..
 
+        torch.cuda.empty_cache()
         meta_param = dict()
         if cfg.META.DATA.NAMES != "":
             meta_param['num_domain'] = cfg.META.DATA.NUM_DOMAINS
@@ -189,6 +190,7 @@ class DefaultTrainer(SimpleTrainer):
             meta_param['type_running_stats_init'] = cfg.META.SOLVER.INIT.TYPE_RUNNING_STATS
             meta_param['type_running_stats_mtrain'] = cfg.META.SOLVER.MTRAIN.TYPE_RUNNING_STATS
             meta_param['type_running_stats_mtest'] = cfg.META.SOLVER.MTEST.TYPE_RUNNING_STATS
+            meta_param['auto_grad_outside'] = cfg.META.SOLVER.AUTO_GRAD_OUTSIDE
 
             if cfg.META.SOLVER.MTEST.ONLY_ONE_DOMAIN:
                 meta_param['num_mtest'] = 1
@@ -213,6 +215,7 @@ class DefaultTrainer(SimpleTrainer):
             for name, val in meta_param.items():
                 logger.info('[M_param] {}: {}'.format(name, val))
             logger.info('-' * 30)
+
 
         if comm.get_world_size() > 1:
             # ref to https://github.com/pytorch/pytorch/issues/22049 to set `find_unused_parameters=True`
