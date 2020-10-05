@@ -122,14 +122,14 @@ MODEL:
   META_ARCHITECTURE: "Metalearning"
   BACKBONE:
     NAME: "build_mobilenet_v2_backbone" # "build_resnet_backbone", "build_mobilenet_v2_backbone"
-    DEPTH: 10 # ResNet->18,34,50,101,152, Mobilenet->10,14
+    DEPTH: 14 # ResNet->18,34,50,101,152, Mobilenet->10,14
     WITH_IBN: False  # 'pretrained/resnet50_ibn_a.pth'
     WITH_NL: False
     PRETRAIN: True
-    PRETRAIN_PATH: 'pretrained/mobilenetv2_1.0.pth' # 'pretrained/mobilenetv2_1.0.pth' or 'pretrained/mobilenetv2_1.4.pth'
-    NUM_BATCH_TRACKED: False # default: False (resnet)
+    PRETRAIN_PATH: 'pretrained/mobilenetv2_1.4.pth' # 'pretrained/mobilenetv2_1.0.pth' or 'pretrained/mobilenetv2_1.4.pth'
+    NUM_BATCH_TRACKED: True # default: False (resnet)
   HEADS:
-    IN_FEAT: 1280 # ResNet 2048, Mobilenet w1.0 1280, w1.4 1792
+    IN_FEAT: 1792 # ResNet 2048, Mobilenet w1.0 1280, w1.4 1792
     NAME: "MetalearningHead"
     POOL_LAYER: "avgpool" # 'fastavgpool', 'avgpool', 'maxpool', 'gempoolP', 'gempool', 'avgmaxpool', 'clipavgpool', 'identity'
     CLS_LAYER: "linear" # 'linear', 'arcSoftmax(x)', 'circleSoftmax', 'amSoftmax(poor)'
@@ -174,7 +174,7 @@ MODEL:
     BIN_INIT: 'one' # 'random', 'one', 'zero', 'half' (optional)
     IN_FC_MULTIPLY: 0.0 # applied when "IN" in fc
 
-    LOAD_BN_AFFINE: True # (optional)
+    LOAD_BN_AFFINE: False # (optional)
     LOAD_BN_RUNNING: True # change to False when TYPE_BACKBONE = "IN" & IN_RUNNING = False (optional)
 
     TYPE_BACKBONE: "BIN_gate1"
@@ -184,7 +184,8 @@ MODEL:
 DATASETS:
   NAMES: ("DG_CUHK02", "DG_CUHK03_detected", "DG_Market1501", "DG_DukeMTMC", "DG_CUHK_SYSU",)
   # "DG_CUHK02", "DG_CUHK03_detected", "DG_Market1501", "DG_DukeMTMC", "DG_CUHK_SYSU", "DG_CUHK03_labeled"
-  TESTS: ("ALL_iLIDS", "ALL_GRID", "ALL_VIPER_only_10", "ALL_PRID") # DG_VIPeR, Market1501, ALL_VIPER_only_5, ALL_VIPER_5, ALL_PRID, PRID, GRID
+#  TESTS: ("ALL_GRID", "ALL_VIPER_only_10", "ALL_PRID", "ALL_iLIDS", ) # DG_VIPeR, Market1501, ALL_VIPER_only_5, ALL_VIPER_5, ALL_PRID, PRID, GRID
+  TESTS: ("GRID",) # DG_VIPeR, Market1501, ALL_VIPER_only_5, ALL_VIPER_5, ALL_PRID, PRID, GRID
 #  TESTS: ("GRID",) # DG_VIPeR, Market1501, ALL_VIPER_only_5, ALL_VIPER_5, ALL_PRID, PRID, GRID
 #  TESTS: ("ALL_iLIDS",) # DG_VIPeR, Market1501, ALL_VIPER_only_5, ALL_VIPER_5, ALL_PRID, PRID, GRID
 
@@ -214,6 +215,7 @@ SOLVER:
   WEIGHT_DECAY: 0.0005
   WEIGHT_DECAY_BIAS: 0.0005
   WRITE_PERIOD: 100
+  WRITE_PERIOD_BIN: 100
   MOMENTUM: 0.9
 
 TEST:

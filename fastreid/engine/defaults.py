@@ -351,11 +351,11 @@ class DefaultTrainer(SimpleTrainer):
 
         return ret
 
-        # IterationTimer
-        # LRScheduler
-        # PeriodicCheckpointer
+        # IterationTimer: compute processing time each epoch
+        # LRScheduler: step LR scheduler and summarize the LR
+        # PeriodicCheckpointer: fastreid/utils/checkpoint.py, save checkpoint
         # EvalHook
-        # PeriodicWriter
+        # PeriodicWriter: engine/defaults.py -> build_writers, fastreid/uitls/events.py
     def build_writers(self):
         """
         Build a list of writers to be used. By default it contains
@@ -642,6 +642,7 @@ class DefaultTrainer(SimpleTrainer):
         # Evaluation period must be divided by 200 for writing into tensorboard.
         num_mod = (cfg.SOLVER.WRITE_PERIOD - cfg.TEST.EVAL_PERIOD * iters_per_epoch) % cfg.SOLVER.WRITE_PERIOD
         cfg.TEST.EVAL_PERIOD = cfg.TEST.EVAL_PERIOD * iters_per_epoch + num_mod
+        # cfg.TEST.EVAL_PERIOD = 1
 
         logger = logging.getLogger(__name__)
         logger.info(

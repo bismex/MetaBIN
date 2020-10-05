@@ -114,24 +114,24 @@ META:
   LOSS:
     COMBINED: False # True-> Mtotal = Mtrain + Mtest
     WEIGHT: 1.0 # w * MTRAIN + MTEST (when combined)
-    MTRAIN_NAME: ("TripletLoss_mtrain",) # "CrossEntropyLoss", "TripletLoss_mtrain", "MMD", "JSD", "STD", "GRL"
+    MTRAIN_NAME: ("TripletLoss_mtrain","MMD") # "CrossEntropyLoss", "TripletLoss_mtrain", "MMD", "JSD", "STD", "GRL"
     MTEST_NAME: ("CrossEntropyLoss", "TripletLoss_mtest",) # "CrossEntropyLoss", "TripletLoss_mtest"
 
 
 MODEL:
   META_ARCHITECTURE: "Metalearning"
   BACKBONE:
-    NAME: "build_mobilenet_v2_backbone" # "build_resnet_backbone", "build_mobilenet_v2_backbone"
-    DEPTH: 14 # ResNet->18,34,50,101,152, Mobilenet->10,14
+    NAME: "build_resnet_backbone" # "build_resnet_backbone", "build_mobilenet_v2_backbone"
+    DEPTH: 50 # ResNet->18,34,50,101,152, Mobilenet->10,14
     WITH_IBN: False  # 'pretrained/resnet50_ibn_a.pth'
     WITH_NL: False
     PRETRAIN: True
-    PRETRAIN_PATH: 'pretrained/mobilenetv2_1.4.pth' # 'pretrained/mobilenetv2_1.0.pth' or 'pretrained/mobilenetv2_1.4.pth'
-    NUM_BATCH_TRACKED: False # default-> False (resnet)
+    PRETRAIN_PATH: '' # 'pretrained/mobilenetv2_1.0.pth' or 'pretrained/mobilenetv2_1.4.pth'
+    NUM_BATCH_TRACKED: True # default-> False (resnet)
   HEADS:
-    IN_FEAT: 1792 # ResNet 2048, Mobilenet w1.0 1280, w1.4 1792
+    IN_FEAT: 2048 # ResNet 2048, Mobilenet w1.0 1280, w1.4 1792
     NAME: "MetalearningHead"
-    POOL_LAYER: "avgpool" # 'fastavgpool', 'avgpool', 'maxpool', 'gempoolP', 'gempool', 'avgmaxpool', 'clipavgpool', 'identity'
+    POOL_LAYER: "gempool" # 'fastavgpool', 'avgpool', 'maxpool', 'gempoolP', 'gempool', 'avgmaxpool', 'clipavgpool', 'identity'
     CLS_LAYER: "linear" # 'linear', 'arcSoftmax(x)', 'circleSoftmax', 'amSoftmax(poor)'
   LOSSES:
     CE:

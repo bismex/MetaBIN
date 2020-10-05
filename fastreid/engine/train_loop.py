@@ -169,6 +169,7 @@ class SimpleTrainer(TrainerBase):
 
         # additional setting
         self.bin_gates = [p for p in self.model.parameters() if getattr(p, 'bin_gate', False)]
+        self.bin_names = [name for name, values in self.model.named_parameters() if getattr(values, 'bin_gate', False)]
         # Meta-leaning setting
         if len(self.meta_param) > 0:
 
@@ -507,6 +508,25 @@ class SimpleTrainer(TrainerBase):
             self.print_selected_optimizer('2) after meta-learning', self.idx_group, self.optimizer, self.meta_param['detail_mode'])
         self.metrics_dict["data_time"] = self.data_time_all
         self._write_metrics(self.metrics_dict)
+        # self.storage.put_scalar
+
+        with torch.no_grad():
+            if len(self.bin_names) > 0 and (self.iter + 1) % (self.cfg.SOLVER.WRITE_PERIOD_BIN) == 0:
+                start = time.perf_counter()
+                all_gate_dict = dict()
+                for j in range(len(self.bin_names)):
+                    name = '_'.join(self.bin_names[j].split('.')[1:]).\
+                        replace('bn', 'b').replace('gate','g').replace('layer', 'l').replace('conv','c')
+                    val_mean = torch.mean(self.bin_gates[j].data).tolist()
+                    val_std = torch.std(self.bin_gates[j].data).tolist()
+                    val_hist = torch.histc(self.bin_gates[j].data, bins=20, min=0.0, max=1.0).int()
+                    all_gate_dict[name + '_mean']= val_mean
+                    all_gate_dict[name + '_std']= val_std
+                    for x in torch.nonzero(val_hist.data):
+                        all_gate_dict[name + '_hist' + str(x[0].tolist())] = val_hist[x[0]].tolist()
+                    # all_gate_dict['hist_' + name]= str(val_hist.tolist()).replace(' ','')
+                self.storage.put_scalars(**all_gate_dict, smoothing_hint=False)
+                # print(time.perf_counter() - start)
 
 
         # print("Data loading time: {}".format(self.data_time_all))

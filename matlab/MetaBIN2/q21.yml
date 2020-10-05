@@ -174,7 +174,7 @@ MODEL:
     BIN_INIT: 'one' # 'random', 'one', 'zero', 'half' (optional)
     IN_FC_MULTIPLY: 0.0 # applied when "IN" in fc
 
-    LOAD_BN_AFFINE: True # (optional)
+    LOAD_BN_AFFINE: False # (optional)
     LOAD_BN_RUNNING: True # change to False when TYPE_BACKBONE = "IN" & IN_RUNNING = False (optional)
 
     TYPE_BACKBONE: "BIN_gate1"
@@ -184,7 +184,7 @@ MODEL:
 DATASETS:
   NAMES: ("DG_CUHK02", "DG_CUHK03_detected", "DG_Market1501", "DG_DukeMTMC", "DG_CUHK_SYSU",)
   # "DG_CUHK02", "DG_CUHK03_detected", "DG_Market1501", "DG_DukeMTMC", "DG_CUHK_SYSU", "DG_CUHK03_labeled"
-  TESTS: ("ALL_GRID", "ALL_VIPER_only_10", "ALL_PRID") # DG_VIPeR, Market1501, ALL_VIPER_only_5, ALL_VIPER_5, ALL_PRID, PRID, GRID
+  TESTS: ("ALL_GRID", "ALL_VIPER_only_10", "ALL_PRID", "ALL_iLIDS") # DG_VIPeR, Market1501, ALL_VIPER_only_5, ALL_VIPER_5, ALL_PRID, PRID, GRID
 #  TESTS: ("ALL_GRID",) # DG_VIPeR, Market1501, ALL_VIPER_only_5, ALL_VIPER_5, ALL_PRID, PRID, GRID
 
 DATALOADER:
