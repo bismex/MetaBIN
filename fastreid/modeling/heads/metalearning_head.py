@@ -56,7 +56,7 @@ class MetalearningHead(nn.Module):
             in_feat = cfg.MODEL.HEADS.IN_FEAT
 
         # BNNeck
-        self.neck_feat = cfg.MODEL.HEADS.NECK_FEAT
+        # self.neck_feat = cfg.MODEL.HEADS.NECK_FEAT
         self.classifier_norm = meta_norm(cfg.MODEL.NORM.TYPE_CLASSIFIER, in_feat, norm_opt=norm_opt, bias_freeze=True)
         # self.classifier_norm = meta_norm(cfg.MODEL.NORM.TYPE_CLASSIFIER, in_feat, norm_opt=norm_opt)
 
@@ -75,11 +75,12 @@ class MetalearningHead(nn.Module):
     def forward(self, features, targets=None, opt = None):
 
         if self.BOTTLENECK_flag:
-            features = self.pool_layer(features) # 4D -> 4D[...,1,1]
-            global_feat = self.bottleneck(features[...,0,0], opt)
+            global_feat = self.pool_layer(features) # 4D -> 4D[...,1,1]
+            bottleneck_feat = self.bottleneck(global_feat[...,0,0], opt)
+            bn_feat = self.classifier_norm(bottleneck_feat, opt)
         else:
             global_feat = self.pool_layer(features) # 4D -> 4D[...,1,1]
-        bn_feat = self.classifier_norm(global_feat, opt)
+            bn_feat = self.classifier_norm(global_feat, opt)
         if len(bn_feat.shape) == 4:
             bn_feat = bn_feat[..., 0, 0]
 
@@ -93,15 +94,16 @@ class MetalearningHead(nn.Module):
             pred_class_logits = self.classifier_fc.s * \
                                 F.linear(F.normalize(bn_feat), F.normalize(self.classifier_fc.weight))
 
-        if self.neck_feat == "before":  feat = global_feat[..., 0, 0] # this feature is triplet feature
-        elif self.neck_feat == "after": feat = bn_feat
-        else:
-            raise KeyError("MODEL.HEADS.NECK_FEAT value is invalid, must choose from ('after' & 'before')")
+        # if self.neck_feat == "before":  feat = global_feat[..., 0, 0] # this feature is triplet feature
+        # elif self.neck_feat == "after": feat = bn_feat
+        # else:
+        #     raise KeyError("MODEL.HEADS.NECK_FEAT value is invalid, must choose from ('after' & 'before')")
 
         return {
             "cls_outputs": cls_outputs,
             "pred_class_logits": pred_class_logits,
-            "features": feat,
+            "pooled_features": global_feat[..., 0, 0],
+            "bn_features": bn_feat,
         }
 
 class bottleneck_layer(nn.Module):

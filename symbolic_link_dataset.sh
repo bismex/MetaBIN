@@ -6,6 +6,7 @@ ln -sf ../../../../DB/REID_ALL/cuhk02/ ./datasets/cuhk02
 ln -sf ../../../../DB/REID_ALL/VIPeR/ ./datasets/viper
 ln -sf ../../../../DB/REID_ALL/prid_2011/ ./datasets/prid_2011
 ln -sf ../../../../DB/REID_ALL/GRID/ ./datasets/GRID
+ln -sf ../../../../DB/REID_ALL/QMUL-iLIDS/ ./datasets/QMUL-iLIDS
 ln -sf ../../../../DB/VEHICLE/VehicleID_V1.0/ ./datasets/vehicleid
 ln -sf ../../../../DB/VEHICLE/VeRi/ ./datasets/veri
 ln -sf ../../../../DB/VEHICLE/VeRi-Wild/ ./datasets/VERI-Wild

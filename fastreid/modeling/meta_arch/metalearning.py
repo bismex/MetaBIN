@@ -79,7 +79,8 @@ class Metalearning(nn.Module):
 
         pred_class_logits = outputs['pred_class_logits'].detach()
         cls_outputs       = outputs['cls_outputs']
-        pred_features     = outputs['features']
+        pooled_features   = outputs['pooled_features']
+        bn_features       = outputs['bn_features']
 
 
         loss_names = opt['loss']
@@ -90,7 +91,7 @@ class Metalearning(nn.Module):
 
         if "STD" in loss_names:
             loss_dict['loss_std'] = domain_STD_loss(
-                pred_features,
+                pooled_features if self._cfg.MODEL.LOSSES.STD.FEAT_ORDER == 'before' else bn_features,
                 domain_labels,
                 self._cfg.MODEL.LOSSES.STD.NORM,
                 self._cfg.MODEL.LOSSES.STD.TYPE,
@@ -99,7 +100,7 @@ class Metalearning(nn.Module):
 
         if "JSD" in loss_names:
             loss_dict['loss_jsd'] = domain_JSD_loss(
-                pred_features,
+                pooled_features if self._cfg.MODEL.LOSSES.JSD.FEAT_ORDER == 'before' else bn_features,
                 domain_labels,
                 self._cfg.MODEL.LOSSES.JSD.NORM,
             ) * self._cfg.MODEL.LOSSES.JSD.SCALE
@@ -107,7 +108,7 @@ class Metalearning(nn.Module):
         if "MMD" in loss_names:
             scales = 1.0
             loss_dict['loss_mmd'] = domain_MMD_loss(
-                pred_features,
+                pooled_features if self._cfg.MODEL.LOSSES.MMD.FEAT_ORDER == 'before' else bn_features,
                 domain_labels,
                 self._cfg.MODEL.LOSSES.MMD.NORM,
                 self._cfg.MODEL.LOSSES.MMD.NORM_FLAG,
@@ -127,7 +128,7 @@ class Metalearning(nn.Module):
 
         if "TripletLoss" in loss_names:
             loss_dict['loss_triplet'] = triplet_loss(
-                pred_features,
+                pooled_features if self._cfg.MODEL.LOSSES.TRI.FEAT_ORDER == 'before' else bn_features,
                 gt_labels,
                 self._cfg.MODEL.LOSSES.TRI.MARGIN,
                 self._cfg.MODEL.LOSSES.TRI.NORM_FEAT,
@@ -140,7 +141,7 @@ class Metalearning(nn.Module):
 
         if "TripletLoss_mtrain" in loss_names:
             loss_dict['loss_triplet_mtrain'] = triplet_loss(
-                pred_features,
+                pooled_features if self._cfg.MODEL.LOSSES.TRI_MTRAIN.FEAT_ORDER == 'before' else bn_features,
                 gt_labels,
                 self._cfg.MODEL.LOSSES.TRI_MTRAIN.MARGIN,
                 self._cfg.MODEL.LOSSES.TRI_MTRAIN.NORM_FEAT,
@@ -153,7 +154,7 @@ class Metalearning(nn.Module):
 
         if "TripletLoss_mtest" in loss_names:
             loss_dict['loss_triplet_mtest'] = triplet_loss(
-                pred_features,
+                pooled_features if self._cfg.MODEL.LOSSES.TRI_MTEST.FEAT_ORDER == 'before' else bn_features,
                 gt_labels,
                 self._cfg.MODEL.LOSSES.TRI_MTEST.MARGIN,
                 self._cfg.MODEL.LOSSES.TRI_MTEST.NORM_FEAT,
@@ -165,7 +166,7 @@ class Metalearning(nn.Module):
 
         if "CircleLoss" in loss_names:
             loss_dict['loss_circle'] = circle_loss(
-                pred_features,
+                pooled_features if self._cfg.MODEL.LOSSES.CIRCLE.FEAT_ORDER == 'before' else bn_features,
                 gt_labels,
                 self._cfg.MODEL.LOSSES.CIRCLE.MARGIN,
                 self._cfg.MODEL.LOSSES.CIRCLE.ALPHA,

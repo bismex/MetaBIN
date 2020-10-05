@@ -170,6 +170,7 @@ class DefaultTrainer(SimpleTrainer):
         meta_param = dict()
         if cfg.META.DATA.NAMES != "":
             meta_param['num_domain'] = cfg.META.DATA.NUM_DOMAINS
+            meta_param['whole'] = cfg.META.DATA.WHOLE
 
             meta_param['meta_compute_layer'] = cfg.META.MODEL.META_COMPUTE_LAYER
             meta_param['meta_update_layer'] = cfg.META.MODEL.META_UPDATE_LAYER
@@ -177,7 +178,12 @@ class DefaultTrainer(SimpleTrainer):
             meta_param['iter_init_inner'] = cfg.META.SOLVER.INIT.INNER_LOOP
             meta_param['iter_init_outer'] = cfg.META.SOLVER.INIT.OUTER_LOOP
 
-            meta_param['update_ratio'] = cfg.META.SOLVER.LR_FACTOR.META_UPDATE
+            meta_param['update_ratio'] = cfg.META.SOLVER.LR_FACTOR.META
+            # meta_param['update_ratio'] = cfg.META.SOLVER.LR_FACTOR.GATE_CYCLIC_RATIO
+            # meta_param['update_ratio'] = cfg.META.SOLVER.LR_FACTOR.GATE_CYCLIC_PERIOD_PER_EPOCH
+            meta_param['update_cyclic_ratio'] = cfg.META.SOLVER.LR_FACTOR.META_CYCLIC_RATIO
+            meta_param['update_cyclic_period'] = cfg.META.SOLVER.LR_FACTOR.META_CYCLIC_PERIOD_PER_EPOCH
+            meta_param['iters_per_epoch'] = cfg.SOLVER.ITERS_PER_EPOCH
 
 
             meta_param['iter_mtrain'] = cfg.META.SOLVER.MTRAIN.INNER_LOOP
@@ -511,6 +517,9 @@ class DefaultTrainer(SimpleTrainer):
                 elif 'GRID' in dataset_name:
                     dataset_name_local = 'DG_GRID'
                     sub_name = [x for x in range(10)]
+                elif 'iLIDS' in dataset_name:
+                    dataset_name_local = 'DG_iLIDS'
+                    sub_name = [x for x in range(10)]
 
 
                 for x in sub_name:
@@ -617,6 +626,7 @@ class DefaultTrainer(SimpleTrainer):
                 iters_per_epoch = num_images // (cfg.SOLVER.IMS_PER_BATCH * cfg.META.SOLVER.INIT.INNER_LOOP)
         else:
             iters_per_epoch = num_images // cfg.SOLVER.IMS_PER_BATCH
+        cfg.SOLVER.ITERS_PER_EPOCH = iters_per_epoch
         cfg.MODEL.HEADS.NUM_CLASSES = num_classes
         cfg.SOLVER.MAX_ITER *= iters_per_epoch
         cfg.SOLVER.WARMUP_ITERS *= iters_per_epoch

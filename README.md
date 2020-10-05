@@ -223,5 +223,16 @@ DG-person/
   
   
 - i-LIDS
-  - 
-  http://www.eecs.qmul.ac.uk/~jason/data/i-LIDS_Pedestrian.tgz
+  - http://www.eecs.qmul.ac.uk/~jason/data/i-LIDS_Pedestrian.tgz
+  - https://github.com/BJTUJia/person_reID_DualNorm
+  - Create a directory called `QMUL_iLIDS`
+  - Download `QMUL_iLIDS` from the upper links
+  - Split sets () can be created by python code `iLIDS.py`
+  - The data structure should look like
+  
+  ```
+  QMUL-iLIDS/
+  ├── images/
+  
+  
+  ```

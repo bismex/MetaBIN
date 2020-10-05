@@ -18,6 +18,7 @@ from fastreid.utils.events import EventStorage
 from fastreid.utils.file_io import PathManager
 logger = logging.getLogger(__name__)
 import copy
+import math
 from collections import Counter
 from torch.autograd import Variable
 
@@ -347,36 +348,6 @@ class SimpleTrainer(TrainerBase):
             self.inner_clamp = True
             self.print_flag = False
 
-
-    def extract_top_level_dict(self, current_dict):
-        """
-        Builds a graph dictionary from the passed depth_keys, value pair. Useful for dynamically passing external params
-        :param depth_keys: A list of strings making up the name of a variable. Used to make a graph for that params tree.
-        :param value: Param value
-        :param key_exists: If none then assume new dict, else load existing dict and add new key->value pairs to it.
-        :return: A dictionary graph of the params already added to the graph.
-        """
-        output_dict = dict()
-        for key in current_dict.keys():
-            name = key.replace("layer_dict.", "")
-            name = name.replace("layer_dict.", "")
-            name = name.replace("block_dict.", "")
-            name = name.replace("module-", "")
-            top_level = name.split(".")[0]
-            sub_level = ".".join(name.split(".")[1:])
-
-            if top_level not in output_dict:
-                if sub_level == "":
-                    output_dict[top_level] = current_dict[key]
-                else:
-                    output_dict[top_level] = {sub_level: current_dict[key]}
-            else:
-                new_item = {key: value for key, value in output_dict[top_level].items()}
-                new_item[sub_level] = current_dict[key]
-                output_dict[top_level] = new_item
-
-        # print(current_dict.keys(), output_dict.keys())
-        return output_dict
     def run_step(self):
         # initial setting
         # self.optimizer.zero_grad()
@@ -465,10 +436,16 @@ class SimpleTrainer(TrainerBase):
                 opt = self.opt_setting('mtrain')
 
                 if self.data_loader_mtest is None:
-                    data, data_time = self.get_data(self._data_loader_iter_mtrain, list_sample = list_mtrain, opt = 'all')
-                    self.data_time_all += data_time
-                    data_mtrain = data[0]
-                    data_mtest = data[1]
+                    if self.meta_param['whole']:
+                        data, data_time = self.get_data(self._data_loader_iter_mtrain, list_sample = list_mtrain, opt = 'all')
+                        self.data_time_all += data_time
+                        data_mtrain = data[0]
+                        data_mtest = data[1]
+                    else:
+                        data_mtrain, data_time = self.get_data(self._data_loader_iter_mtrain, list_sample=list_mtrain)
+                        self.data_time_all += data_time
+                        data_mtest, data_time = self.get_data(self._data_loader_iter_mtrain, list_sample=list_mtest)
+                        self.data_time_all += data_time
                 else:
                     data_mtrain, data_time = self.get_data(self._data_loader_iter_mtrain, list_sample = list_mtrain)
                     self.data_time_all += data_time
@@ -656,25 +633,52 @@ class SimpleTrainer(TrainerBase):
             opt['zero_grad'] = self.meta_param['zero_grad']
             opt['type_running_stats'] = self.meta_param['type_running_stats_mtest']
 
+            # self.meta_param['update_cyclic_ratio']
+            # self.meta_param['update_cyclic_period']
+            if self.meta_param['update_ratio'] == 0.0:
+                print('.')
+                # self.meta_param['iters_per_epoch']
+                one_period = self.meta_param['iters_per_epoch'] / self.meta_param['update_cyclic_period']
+                b = math.log10(self.meta_param['update_cyclic_ratio'])
+                a = b / (one_period/4.0*1.0)
+                # for i in range(self.meta_param['iters_per_epoch']):
+                rem_val = self.iter % one_period
+                if  rem_val < (one_period/4.0*1.0): # 1st period
+                    meta_ratio = a * rem_val # y = ax
+                elif  rem_val < (one_period/4.0*2.0): # 2nd period
+                    rem_val -= one_period/4.0*1.0
+                    meta_ratio = b - a * rem_val # y = b - ax
+                elif  rem_val < (one_period/4.0*3.0): # 3rd period
+                    rem_val -= one_period/4.0*2.0
+                    meta_ratio = - a * rem_val # y = - ax
+                else: # 4th period
+                    rem_val -= one_period/4.0*3.0
+                    meta_ratio = - b + a * rem_val # y = -b + ax
+                meta_ratio = pow(10, meta_ratio)
+
+                # print(meta_ratio)
+            else:
+                meta_ratio = self.meta_param['update_ratio']
+
             for name, val in self.all_layers.items():
                 if self.all_layers[name]['w_param_idx'] is not None:
                     self.all_layers[name]['w_step_size'] = \
                         self.optimizer.param_groups[self.all_layers[name]['w_param_idx']]["lr"]\
-                        * self.meta_param['update_ratio']
+                        * meta_ratio
                 else:
                     self.all_layers[name]['b_step_size'] = None
 
                 if self.all_layers[name]['b_param_idx'] is not None:
                     self.all_layers[name]['b_step_size'] = \
                         self.optimizer.param_groups[self.all_layers[name]['b_param_idx']]["lr"]\
-                        * self.meta_param['update_ratio']
+                        * meta_ratio
                 else:
                     self.all_layers[name]['b_step_size'] = None
 
                 if self.all_layers[name]['g_param_idx'] is not None:
                     self.all_layers[name]['g_step_size'] = \
                         self.optimizer.param_groups[self.all_layers[name]['g_param_idx']]["lr"]\
-                        * self.meta_param['update_ratio']
+                        * meta_ratio
                 else:
                     self.all_layers[name]['g_step_size'] = None
 

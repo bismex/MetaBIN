@@ -39,6 +39,7 @@ from .pes3d import PeS3D
 from .caviara import CAVIARa
 from .viper import VIPeR
 from .DG_viper import DG_VIPeR
+from .DG_iLIDS import DG_iLIDS
 from .lpw import LPW
 from .shinpuhkan import Shinpuhkan
 # Vehicle re-id datasets
