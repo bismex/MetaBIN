@@ -70,8 +70,11 @@ DG-person/
   - `cd DG-person`
   - `bash symbolic_link_others.sh`
   - Download pretrained models [link] and move them on the folder `DG-person/pretrained/`
+  - Download pretrained models [link] and change name
+    - mobilenetv2_x1_0 (top-1 71.3%): [[link](https://mega.nz/#!NKp2wAIA!1NH1pbNzY_M2hVk_hdsxNM1NUOWvvGPHhaNr-fASF6c)]
+    - mobilenetv2_x1_4 (top-1 73.9%): [[link](https://mega.nz/#!RGhgEIwS!xN2s2ZdyqI6vQ3EwgmRXLEW3khr9tpXg96G9SUJugGk)]
+    - change name as `mobilenetv2_1.0.pth`, `mobilenetv2_1.4.pth`
 
-  
 - Direct connect (not recommended)
   - Make 'pretrained' and 'logs' folder in `DG-person`
   - Move the pretrained models on `DG-person(pretrained)`
