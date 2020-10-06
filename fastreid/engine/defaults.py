@@ -197,6 +197,7 @@ class DefaultTrainer(SimpleTrainer):
             meta_param['type_running_stats_mtrain'] = cfg.META.SOLVER.MTRAIN.TYPE_RUNNING_STATS
             meta_param['type_running_stats_mtest'] = cfg.META.SOLVER.MTEST.TYPE_RUNNING_STATS
             meta_param['auto_grad_outside'] = cfg.META.SOLVER.AUTO_GRAD_OUTSIDE
+            meta_param['inner_clamp'] = cfg.META.SOLVER.INNER_CLAMP
 
             if cfg.META.SOLVER.MTEST.ONLY_ONE_DOMAIN:
                 meta_param['num_mtest'] = 1

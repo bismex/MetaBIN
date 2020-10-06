@@ -5,7 +5,7 @@ fprintf('You should input like this(recommended): copy_yml("target_file_name", i
 
 % copy_target = 'test1_veri.yml';
 var_make = [idx1:idx2]; % which number you want to make
-num_location = 1; % which index? ex> name15_25_30.txt -> if 1 -> find '15'
+num_location = 2; % which index? ex> name15_25_30.txt -> if 1 -> find '15'
 num_pad = 2; % ex> when num_pad = 2, output 01, 02, 03, ... 99
 if nargin > 3
     num_pad = varargin{1};

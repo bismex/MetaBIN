@@ -77,7 +77,7 @@ class MobileNetV2(nn.Module):
         - ``mobilenetv2_x1_4``: MobileNetV2 x1.4.
     """
 
-    def __init__(self, width_mult=1, bn_norm = 'BN', norm_opt = None, **kwargs):
+    def __init__(self, width_mult=1, bn_norm = 'BN', norm_opt = None, last_stride = 2, **kwargs):
         super(MobileNetV2, self).__init__()
 
         self.in_channels = int(32 * width_mult)
@@ -90,7 +90,7 @@ class MobileNetV2(nn.Module):
         self.layer4 = self._make_layer(Bottleneck, 6, int(32 * width_mult), 3, 2, bn_norm = bn_norm, norm_opt = norm_opt) # IN <- dualnorm
         self.layer5 = self._make_layer(Bottleneck, 6, int(64 * width_mult), 4, 2, bn_norm = bn_norm, norm_opt = norm_opt) # IN <- dualnorm
         self.layer6 = self._make_layer(Bottleneck, 6, int(96 * width_mult), 3, 1, bn_norm = bn_norm, norm_opt = norm_opt) # IN <- dualnorm
-        self.layer7 = self._make_layer(Bottleneck, 6, int(160 * width_mult), 3, 2, bn_norm = bn_norm, norm_opt = norm_opt)
+        self.layer7 = self._make_layer(Bottleneck, 6, int(160 * width_mult), 3, last_stride, bn_norm = bn_norm, norm_opt = norm_opt)
         self.layer8 = self._make_layer(Bottleneck, 6, int(320 * width_mult), 1, 1, bn_norm = bn_norm, norm_opt = norm_opt)
         self.layer9 = ConvBlock(self.in_channels, self.feature_dim, 1, bn_norm = bn_norm, norm_opt = norm_opt)
 
@@ -157,7 +157,7 @@ def build_mobilenet_v2_backbone(cfg):
 
     pretrain = cfg.MODEL.BACKBONE.PRETRAIN
     pretrain_path = cfg.MODEL.BACKBONE.PRETRAIN_PATH
-    # last_stride = cfg.MODEL.BACKBONE.LAST_STRIDE
+    last_stride = cfg.MODEL.BACKBONE.LAST_STRIDE
     bn_norm = cfg.MODEL.NORM.TYPE_BACKBONE
     norm_opt = dict()
     norm_opt['BN_AFFINE'] = cfg.MODEL.NORM.BN_AFFINE
@@ -176,6 +176,7 @@ def build_mobilenet_v2_backbone(cfg):
         width_mult = depth,
         bn_norm = bn_norm,
         norm_opt = norm_opt,
+        last_stride = last_stride
     )
 
     # model_urls = {

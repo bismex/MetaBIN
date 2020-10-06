@@ -110,6 +110,7 @@ META:
     STOP_GRADIENT: True # [False->slow..]
     MANUAL_ZERO_GRAD: 'delete' # 'zero', 'delete', 'hold' [delete->high memory, but completely delete] weight.grad = None
     MANUAL_MEMORY_EMPTY: False # [True->slow, but low memory]
+    INNER_CLAMP: True # [True->slow, but low memory]
 
   LOSS:
     COMBINED: False # True-> Mtotal = Mtrain + Mtest
@@ -128,6 +129,7 @@ MODEL:
     PRETRAIN: True
     PRETRAIN_PATH: 'pretrained/mobilenetv2_1.4.pth' # 'pretrained/mobilenetv2_1.0.pth' or 'pretrained/mobilenetv2_1.4.pth'
     NUM_BATCH_TRACKED: True # default: False (resnet)
+    LAST_STRIDE: 1
   HEADS:
     IN_FEAT: 1792 # ResNet 2048, Mobilenet w1.0 1280, w1.4 1792
     NAME: "MetalearningHead"
@@ -184,8 +186,8 @@ MODEL:
 DATASETS:
   NAMES: ("DG_CUHK02", "DG_CUHK03_detected", "DG_Market1501", "DG_DukeMTMC", "DG_CUHK_SYSU",)
   # "DG_CUHK02", "DG_CUHK03_detected", "DG_Market1501", "DG_DukeMTMC", "DG_CUHK_SYSU", "DG_CUHK03_labeled"
-#  TESTS: ("ALL_GRID", "ALL_VIPER_only_10", "ALL_PRID", "ALL_iLIDS", ) # DG_VIPeR, Market1501, ALL_VIPER_only_5, ALL_VIPER_5, ALL_PRID, PRID, GRID
-  TESTS: ("GRID",) # DG_VIPeR, Market1501, ALL_VIPER_only_5, ALL_VIPER_5, ALL_PRID, PRID, GRID
+  TESTS: ("ALL_GRID", "ALL_VIPER_only_10", "ALL_PRID", "ALL_iLIDS", ) # DG_VIPeR, Market1501, ALL_VIPER_only_5, ALL_VIPER_5, ALL_PRID, PRID, GRID
+#  TESTS: ("GRID",) # DG_VIPeR, Market1501, ALL_VIPER_only_5, ALL_VIPER_5, ALL_PRID, PRID, GRID
 #  TESTS: ("GRID",) # DG_VIPeR, Market1501, ALL_VIPER_only_5, ALL_VIPER_5, ALL_PRID, PRID, GRID
 #  TESTS: ("ALL_iLIDS",) # DG_VIPeR, Market1501, ALL_VIPER_only_5, ALL_VIPER_5, ALL_PRID, PRID, GRID
 

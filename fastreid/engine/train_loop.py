@@ -652,6 +652,7 @@ class SimpleTrainer(TrainerBase):
             opt['allow_unused'] = self.meta_param['allow_unused']
             opt['zero_grad'] = self.meta_param['zero_grad']
             opt['type_running_stats'] = self.meta_param['type_running_stats_mtest']
+            opt['inner_clamp'] = self.meta_param['inner_clamp']
 
             # self.meta_param['update_cyclic_ratio']
             # self.meta_param['update_cyclic_period']

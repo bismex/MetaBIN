@@ -87,6 +87,7 @@ _C.META.SOLVER.STOP_GRADIENT = False
 _C.META.SOLVER.MANUAL_ZERO_GRAD = 'zero' # 'zero', 'delete', 'hold' [delete->high memory, but completely delete] weight.grad = None
 _C.META.SOLVER.MANUAL_MEMORY_EMPTY = True
 _C.META.SOLVER.AUTO_GRAD_OUTSIDE = True
+_C.META.SOLVER.INNER_CLAMP = True
 
 _C.META.LOSS = CN()
 _C.META.LOSS.COMBINED = False # True: Mtotal = Mtrain + Mtest

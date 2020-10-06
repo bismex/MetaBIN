@@ -311,7 +311,8 @@ class Meta_bin_gate_ver1(nn.BatchNorm2d):
 
         if use_meta_learning_gates:
             update_gate = update_parameter(self.gate, self.g_step_size, opt)
-            update_gate.data.clamp_(min=0, max=1)
+            if opt['inner_clamp']:
+                update_gate.data.clamp_(min=0, max=1)
             # print(update_gate[0].data.cpu())
         else:
             update_gate = self.gate
