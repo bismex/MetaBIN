@@ -52,7 +52,7 @@ class Bottleneck(nn.Module):
         #     meta_norm(bn_norm, out_channels, norm_opt = norm_opt),
         # )
         self.conv3 = meta_conv2d(mid_channels, out_channels, 1, bias=False)
-        self.bn4 = meta_norm(bn_norm, out_channels, norm_opt = norm_opt)
+        self.bn = meta_norm(bn_norm, out_channels, norm_opt = norm_opt)
 
     def forward(self, x, opt = None):
         m = self.conv1(x, opt) # conv block
@@ -60,7 +60,7 @@ class Bottleneck(nn.Module):
         # m = self.conv3[0](m, opt) # conv
         # m = self.conv3[1](m, opt) # norm
         m = self.conv3(m, opt) # conv
-        m = self.bn4(m, opt) # norm
+        m = self.bn(m, opt) # norm
         if self.use_residual:
             return x + m
         else:
@@ -201,33 +201,60 @@ def build_mobilenet_v2_backbone(cfg):
                 name = '.'.join(name_split)
             state_dict_new[name] = copy.copy(values) # change conv -> layer (to compatibility with resnet's name)
 
+
+
         state_dict = OrderedDict()
         for name, values in state_dict_new.copy().items():
+            # conv3.0.~~ -> conv3.~~
             if 'conv3.0' in name:
                 name = name.replace('conv3.0', 'conv3')
+            # conv3.1.~~ -> bn.~~
             elif 'conv3.1' in name:
-                name = name.replace('conv3.1', 'bn4')
+                name = name.replace('conv3.1', 'bn')
             state_dict[name] = values
-        # conv3.0.~~ -> conv3.~~
-        # conv3.1.~~ -> bn4.~~
 
 
-        if not cfg.MODEL.NORM.LOAD_BN_AFFINE:
-            for name, param in state_dict.copy().items():
-                if ('bn' in name) or ('norm' in name):
+        if cfg.MODEL.NORM.TYPE_BACKBONE == 'BIN_gate2':
+            for name, values in state_dict.copy().items():
+                if 'bn' in name:
                     if ('weight' in name) or ('bias' in name):
+                        # bn.weight, bn.bias -> bn.bat_n.weight, bn.bat_n.bias
+                        if cfg.MODEL.NORM.LOAD_BN_AFFINE:
+                            new_name = name.replace('bn', 'bn.bat_n')
+                            state_dict[new_name] = values
+                        # bn.weight, bn.bias -> bn.ins_n.weight, bn.ins_n.bias
+                        if cfg.MODEL.NORM.LOAD_IN_AFFINE:
+                            new_name = name.replace('bn', 'bn.ins_n')
+                            state_dict[new_name] = values
                         del state_dict[name]
-                        print(name)
-        if not cfg.MODEL.NORM.LOAD_BN_RUNNING:
-            for name, param in state_dict.copy().items():
-                if ('bn' in name) or ('norm' in name):
-                    if ('running_mean' in name) or ('running_var' in name):
+                    elif ('running_mean' in name) or ('running_var' in name):
+                        # bn.running_mean, bn.running_var -> bn.bat_n.running_mean, bn.bat_n.running_var
+                        if cfg.MODEL.NORM.LOAD_BN_RUNNING:
+                            new_name = name.replace('bn', 'bn.bat_n')
+                            state_dict[new_name] = values
+                        # bn.running_mean, bn.running_var -> bn.ins_n.running_mean, bn.ins_n.running_var
+                        if cfg.MODEL.NORM.LOAD_IN_RUNNING:
+                            new_name = name.replace('bn', 'bn.ins_n')
+                            state_dict[new_name] = values
                         del state_dict[name]
-        if not cfg.MODEL.NORM.IN_RUNNING and cfg.MODEL.NORM.TYPE_BACKBONE == "IN":
-            for name, param in state_dict.copy().items():
-                if ('bn' in name) or ('norm' in name):
-                    if ('running_mean' in name) or ('running_var' in name):
-                        del state_dict[name]
+
+        else:
+            if not cfg.MODEL.NORM.LOAD_BN_AFFINE:
+                for name, param in state_dict.copy().items():
+                    if ('bn' in name) or ('norm' in name):
+                        if ('weight' in name) or ('bias' in name):
+                            del state_dict[name]
+                            print(name)
+            if not cfg.MODEL.NORM.LOAD_BN_RUNNING:
+                for name, param in state_dict.copy().items():
+                    if ('bn' in name) or ('norm' in name):
+                        if ('running_mean' in name) or ('running_var' in name):
+                            del state_dict[name]
+            if not cfg.MODEL.NORM.IN_RUNNING and cfg.MODEL.NORM.TYPE_BACKBONE == "IN":
+                for name, param in state_dict.copy().items():
+                    if ('bn' in name) or ('norm' in name):
+                        if ('running_mean' in name) or ('running_var' in name):
+                            del state_dict[name]
 
         if not cfg.MODEL.BACKBONE.NUM_BATCH_TRACKED:
             for name, values in state_dict.copy().items():

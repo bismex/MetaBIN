@@ -18,7 +18,6 @@ from fastreid.layers import (
     IBN,
     SELayer,
     Non_local,
-    get_norm,
 )
 from fastreid.utils.checkpoint import get_missing_parameters_message, get_unexpected_parameters_message
 from .build import BACKBONE_REGISTRY
@@ -152,7 +151,7 @@ class ResNet(nn.Module):
         self.random_init()
 
         if with_nl:
-            self._build_nonlocal(layers, non_layers, bn_norm, num_splits)
+            self._build_nonlocal(layers, non_layers, bn_norm, norm_opt, num_splits)
         else:
             self.NL_1_idx = self.NL_2_idx = self.NL_3_idx = self.NL_4_idx = []
 
@@ -178,18 +177,18 @@ class ResNet(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def _build_nonlocal(self, layers, non_layers, bn_norm, num_splits):
+    def _build_nonlocal(self, layers, non_layers, bn_norm, norm_opt, num_splits):
         self.NL_1 = nn.ModuleList(
-            [Non_local(256, bn_norm, num_splits) for _ in range(non_layers[0])])
+            [Non_local(256, bn_norm, norm_opt, num_splits) for _ in range(non_layers[0])])
         self.NL_1_idx = sorted([layers[0] - (i + 1) for i in range(non_layers[0])])
         self.NL_2 = nn.ModuleList(
-            [Non_local(512, bn_norm, num_splits) for _ in range(non_layers[1])])
+            [Non_local(512, bn_norm, norm_opt, num_splits) for _ in range(non_layers[1])])
         self.NL_2_idx = sorted([layers[1] - (i + 1) for i in range(non_layers[1])])
         self.NL_3 = nn.ModuleList(
-            [Non_local(1024, bn_norm, num_splits) for _ in range(non_layers[2])])
+            [Non_local(1024, bn_norm, norm_opt, num_splits) for _ in range(non_layers[2])])
         self.NL_3_idx = sorted([layers[2] - (i + 1) for i in range(non_layers[2])])
         self.NL_4 = nn.ModuleList(
-            [Non_local(2048, bn_norm, num_splits) for _ in range(non_layers[3])])
+            [Non_local(2048, bn_norm, norm_opt, num_splits) for _ in range(non_layers[3])])
         self.NL_4_idx = sorted([layers[3] - (i + 1) for i in range(non_layers[3])])
 
     def forward(self, x, opt = None):
@@ -276,9 +275,9 @@ def build_resnet_backbone(cfg):
     with_nl = cfg.MODEL.BACKBONE.WITH_NL
     depth = cfg.MODEL.BACKBONE.DEPTH
 
-    num_blocks_per_stage = {34: [3, 4, 6, 3], 50: [3, 4, 6, 3], 101: [3, 4, 23, 3], 152: [3, 8, 36, 3], }[depth]
-    nl_layers_per_stage = {34: [0, 2, 3, 0], 50: [0, 2, 3, 0], 101: [0, 2, 9, 0]}[depth]
-    block = {34: BasicBlock, 50: Bottleneck, 101: Bottleneck}[depth]
+    num_blocks_per_stage = {18: [2,2,2,2], 34: [3, 4, 6, 3], 50: [3, 4, 6, 3], 101: [3, 4, 23, 3], 152: [3, 8, 36, 3], }[depth]
+    nl_layers_per_stage = {18: [0,0,0,0], 34: [0, 2, 3, 0], 50: [0, 2, 3, 0], 101: [0, 2, 9, 0]}[depth]
+    block = {18: BasicBlock, 34: BasicBlock, 50: Bottleneck, 101: Bottleneck}[depth]
     model = ResNet(last_stride, bn_norm, norm_opt, num_splits, with_ibn, with_se, with_nl, block,
                    num_blocks_per_stage, nl_layers_per_stage)
     if pretrain:
@@ -321,21 +320,66 @@ def build_resnet_backbone(cfg):
                 del state_dict[name]
 
 
-        if not cfg.MODEL.NORM.LOAD_BN_AFFINE:
-            for name, param in state_dict.copy().items():
-                if ('bn' in name) or ('norm' in name):
+        if cfg.MODEL.NORM.TYPE_BACKBONE == 'BIN_gate2':
+            for name, values in state_dict.copy().items():
+                if 'bn' in name:
                     if ('weight' in name) or ('bias' in name):
+                        # bn.weight, bn.bias -> bn.bat_n.weight, bn.bat_n.bias
+                        if cfg.MODEL.NORM.LOAD_BN_AFFINE:
+                            split_name = name.split('.')
+                            for i, local_name in enumerate(split_name):
+                                if 'bn' in local_name:
+                                    split_name.insert(i + 1, 'bat_n')
+                                    break
+                            new_name = '.'.join(split_name)
+                            state_dict[new_name] = values
+                        # bn.weight, bn.bias -> bn.ins_n.weight, bn.ins_n.bias
+                        if cfg.MODEL.NORM.LOAD_IN_AFFINE:
+                            split_name = name.split('.')
+                            for i, local_name in enumerate(split_name):
+                                if 'bn' in local_name:
+                                    split_name.insert(i + 1, 'ins_n')
+                                    break
+                            new_name = '.'.join(split_name)
+                            state_dict[new_name] = values
                         del state_dict[name]
-        if not cfg.MODEL.NORM.LOAD_BN_RUNNING:
-            for name, param in state_dict.copy().items():
-                if ('bn' in name) or ('norm' in name):
-                    if ('running_mean' in name) or ('running_var' in name):
+                    elif ('running_mean' in name) or ('running_var' in name):
+                        # bn.running_mean, bn.running_var -> bn.bat_n.running_mean, bn.bat_n.running_var
+                        if cfg.MODEL.NORM.LOAD_BN_RUNNING:
+                            split_name = name.split('.')
+                            for i, local_name in enumerate(split_name):
+                                if 'bn' in local_name:
+                                    split_name.insert(i + 1, 'bat_n')
+                                    break
+                            new_name = '.'.join(split_name)
+                            state_dict[new_name] = values
+                        # bn.running_mean, bn.running_var -> bn.ins_n.running_mean, bn.ins_n.running_var
+                        if cfg.MODEL.NORM.LOAD_IN_RUNNING:
+                            split_name = name.split('.')
+                            for i, local_name in enumerate(split_name):
+                                if 'bn' in local_name:
+                                    split_name.insert(i + 1, 'ins_n')
+                                    break
+                            new_name = '.'.join(split_name)
+                            state_dict[new_name] = values
                         del state_dict[name]
-        if not cfg.MODEL.NORM.IN_RUNNING and cfg.MODEL.NORM.TYPE_BACKBONE == "IN":
-            for name, param in state_dict.copy().items():
-                if ('bn' in name) or ('norm' in name):
-                    if ('running_mean' in name) or ('running_var' in name):
-                        del state_dict[name]
+
+        else:
+            if not cfg.MODEL.NORM.LOAD_BN_AFFINE:
+                for name, param in state_dict.copy().items():
+                    if ('bn' in name) or ('norm' in name):
+                        if ('weight' in name) or ('bias' in name):
+                            del state_dict[name]
+            if not cfg.MODEL.NORM.LOAD_BN_RUNNING:
+                for name, param in state_dict.copy().items():
+                    if ('bn' in name) or ('norm' in name):
+                        if ('running_mean' in name) or ('running_var' in name):
+                            del state_dict[name]
+            if not cfg.MODEL.NORM.IN_RUNNING and cfg.MODEL.NORM.TYPE_BACKBONE == "IN":
+                for name, param in state_dict.copy().items():
+                    if ('bn' in name) or ('norm' in name):
+                        if ('running_mean' in name) or ('running_var' in name):
+                            del state_dict[name]
 
         incompatible = model.load_state_dict(state_dict, strict=False)
 

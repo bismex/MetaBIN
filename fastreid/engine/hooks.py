@@ -195,7 +195,7 @@ class LRScheduler(HookBase):
     It is executed after every iteration.
     """
 
-    def __init__(self, optimizer, scheduler):
+    def __init__(self, optimizer, scheduler, optimizer2 = None, scheduler2 = None):
         """
         Args:
             optimizer (torch.optim.Optimizer):
@@ -203,6 +203,10 @@ class LRScheduler(HookBase):
         """
         self._optimizer = optimizer
         self._scheduler = scheduler
+        if scheduler2 is not None:
+            self._scheduler2 = scheduler2
+        else:
+            self._scheduler2 = None
 
         # NOTE: some heuristics on what LR to summarize
         # summarize the param group with most parameters
@@ -225,8 +229,11 @@ class LRScheduler(HookBase):
 
     def after_step(self):
         lr = self._optimizer.param_groups[self._best_param_group_id]["lr"]
-        self.trainer.storage.put_scalar("lr", lr, smoothing_hint=False)
+        self.trainer.storage.put_scalar("main_lr", lr, smoothing_hint=False)
         self._scheduler.step()
+        if self._scheduler2 is not None:
+            self._scheduler2.step()
+
 
 
 class AutogradProfiler(HookBase):
@@ -415,20 +422,24 @@ class PreciseBN(HookBase):
 
 
 class FreezeLayer(HookBase):
-    def __init__(self, model, optimizer, freeze_layers, freeze_iters):
+    def __init__(self, model, optimizer_main, optimizer_norm, freeze_layers, freeze_iters):
         self._logger = logging.getLogger(__name__)
 
         if isinstance(model, DistributedDataParallel):
             model = model.module
         self.model = model
-        self.optimizer = optimizer
+        self.optimizer_main = optimizer_main
+        self.optimizer_norm = optimizer_norm
 
         self.freeze_layers = freeze_layers
         self.freeze_iters = freeze_iters
 
         # Previous parameters freeze status
         param_freeze = {}
-        for param_group in self.optimizer.param_groups:
+        for param_group in self.optimizer_main.param_groups:
+            param_name = param_group['name']
+            param_freeze[param_name] = param_group['freeze']
+        for param_group in self.optimizer_norm.param_groups:
             param_name = param_group['name']
             param_freeze[param_name] = param_group['freeze']
         self.param_freeze = param_freeze
@@ -447,7 +458,12 @@ class FreezeLayer(HookBase):
             if not hasattr(self.model, layer):
                 self._logger.info(f'{layer} is not an attribute of the model, will skip this layer')
 
-        for param_group in self.optimizer.param_groups:
+        for param_group in self.optimizer_main.param_groups:
+            param_name = param_group['name']
+            if param_name.split('.')[0] in self.freeze_layers:
+                param_group['freeze'] = True
+
+        for param_group in self.optimizer_norm.param_groups:
             param_name = param_group['name']
             if param_name.split('.')[0] in self.freeze_layers:
                 param_group['freeze'] = True
@@ -458,9 +474,13 @@ class FreezeLayer(HookBase):
 
     def open_all_layer(self):
         self.model.train()
-        for param_group in self.optimizer.param_groups:
+        for param_group in self.optimizer_main.param_groups:
             param_name = param_group['name']
             param_group['freeze'] = self.param_freeze[param_name]
+        for param_group in self.optimizer_norm.param_groups:
+            param_name = param_group['name']
+            param_group['freeze'] = self.param_freeze[param_name]
+
 
 
 class SWA(HookBase):

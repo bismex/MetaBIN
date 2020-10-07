@@ -164,7 +164,20 @@ class DefaultTrainer(SimpleTrainer):
         data_loader, data_loader_add, cfg = self.build_train_loader(cfg)
         cfg = self.auto_scale_hyperparams(cfg, data_loader)
         model = self.build_model(cfg)
-        optimizer = self.build_optimizer(cfg, model) # params, lr, momentum, ..
+
+
+
+        optimizer_main = self.build_optimizer(cfg, model,
+                                              solver_opt = cfg.SOLVER.OPT,
+                                              momentum = cfg.SOLVER.MOMENTUM,
+                                              flag = 'main') # params, lr, momentum, ..
+        if 'BIN_gate' in cfg.MODEL.NORM.TYPE_BACKBONE:
+            optimizer_norm = self.build_optimizer(cfg, model,
+                                                  solver_opt=cfg.SOLVER.OPT_NORM,
+                                                  momentum=cfg.SOLVER.MOMENTUM_NORM,
+                                                  flag = 'norm') # params, lr, momentum, ..
+        else:
+            optimizer_norm = None
 
         torch.cuda.empty_cache()
         meta_param = dict()
@@ -176,6 +189,7 @@ class DefaultTrainer(SimpleTrainer):
             meta_param['meta_update_layer'] = cfg.META.MODEL.META_UPDATE_LAYER
 
             meta_param['iter_init_inner'] = cfg.META.SOLVER.INIT.INNER_LOOP
+            meta_param['iter_init_inner_first'] = cfg.META.SOLVER.INIT.FIRST_INNER_LOOP
             meta_param['iter_init_outer'] = cfg.META.SOLVER.INIT.OUTER_LOOP
 
             meta_param['update_ratio'] = cfg.META.SOLVER.LR_FACTOR.META
@@ -211,6 +225,18 @@ class DefaultTrainer(SimpleTrainer):
             meta_param['flag_manual_zero_grad'] = cfg.META.SOLVER.MANUAL_ZERO_GRAD
             meta_param['flag_manual_memory_empty'] = cfg.META.SOLVER.MANUAL_MEMORY_EMPTY
 
+
+
+            meta_param['main_zero_grad'] = cfg.META.NEW_SOLVER.MAIN_ZERO_GRAD
+            meta_param['norm_zero_grad'] = cfg.META.NEW_SOLVER.NORM_ZERO_GRAD
+            meta_param['momentum_init_grad'] = cfg.META.NEW_SOLVER.MOMENTUM_INIT_GRAD
+
+
+
+
+
+
+
             meta_param['loss_combined'] = cfg.META.LOSS.COMBINED
             meta_param['loss_weight'] = cfg.META.LOSS.WEIGHT
             meta_param['loss_name_mtrain'] = cfg.META.LOSS.MTRAIN_NAME
@@ -231,10 +257,10 @@ class DefaultTrainer(SimpleTrainer):
                 model, device_ids=[comm.get_local_rank()], broadcast_buffers=False
             )
 
-        super().__init__(cfg, model, data_loader, data_loader_add, optimizer, meta_param)
+        super().__init__(cfg, model, data_loader, data_loader_add, optimizer_main, optimizer_norm, meta_param)
 
-        self.scheduler = self.build_lr_scheduler(
-            optimizer = optimizer,
+        self.scheduler_main = self.build_lr_scheduler(
+            optimizer = optimizer_main,
             scheduler_method = cfg.SOLVER.SCHED,
             warmup_factor = cfg.SOLVER.WARMUP_FACTOR,
             warmup_iters=cfg.SOLVER.WARMUP_ITERS,
@@ -245,13 +271,67 @@ class DefaultTrainer(SimpleTrainer):
             delay_iters=cfg.SOLVER.DELAY_ITERS,
             eta_min_lr=cfg.SOLVER.ETA_MIN_LR,
         )
+        # self.scheduler_main.step()
+
+        if optimizer_norm is not None:
+            if cfg.SOLVER.NORM_SCHEDULER == 'same':
+                self.scheduler_norm = self.build_lr_scheduler(
+                    optimizer = optimizer_norm,
+                    scheduler_method = cfg.SOLVER.SCHED,
+                    warmup_factor = cfg.SOLVER.WARMUP_FACTOR,
+                    warmup_iters=cfg.SOLVER.WARMUP_ITERS,
+                    warmup_method=cfg.SOLVER.WARMUP_METHOD,
+                    milestones=cfg.SOLVER.STEPS,
+                    gamma=cfg.SOLVER.GAMMA,
+                    max_iters=cfg.SOLVER.MAX_ITER,
+                    delay_iters=cfg.SOLVER.DELAY_ITERS,
+                    eta_min_lr=cfg.SOLVER.ETA_MIN_LR,
+                )
+            elif cfg.SOLVER.NORM_SCHEDULER == 'no_warm':
+                self.scheduler_norm = self.build_lr_scheduler(
+                    optimizer = optimizer_norm,
+                    scheduler_method = cfg.SOLVER.SCHED,
+                    warmup_factor = cfg.SOLVER.WARMUP_FACTOR,
+                    warmup_iters= 0,
+                    warmup_method=cfg.SOLVER.WARMUP_METHOD,
+                    milestones=cfg.SOLVER.STEPS,
+                    gamma=cfg.SOLVER.GAMMA,
+                    max_iters=cfg.SOLVER.MAX_ITER,
+                    delay_iters=cfg.SOLVER.DELAY_ITERS,
+                    eta_min_lr=cfg.SOLVER.ETA_MIN_LR,
+                )
+            elif cfg.SOLVER.NORM_SCHEDULER == 'equal':
+                self.scheduler_norm = self.build_lr_scheduler(
+                    optimizer = optimizer_norm,
+                    scheduler_method = cfg.SOLVER.SCHED,
+                    warmup_factor = cfg.SOLVER.WARMUP_FACTOR,
+                    warmup_iters= 0,
+                    warmup_method=cfg.SOLVER.WARMUP_METHOD,
+                    milestones=[100000000,1000000000],
+                    gamma=1.0,
+                    max_iters=cfg.SOLVER.MAX_ITER,
+                    delay_iters=cfg.SOLVER.DELAY_ITERS,
+                    eta_min_lr=cfg.SOLVER.ETA_MIN_LR,
+                )
+            elif cfg.SOLVER.NORM_SCHEDULER == 'cyclic':
+                self.scheduler_norm = torch.optim.lr_scheduler.CyclicLR(
+                    optimizer = optimizer_norm,
+                    base_lr = cfg.SOLVER.CYCLIC_MIN_LR,
+                    max_lr = cfg.SOLVER.CYCLIC_MAX_LR,
+                    step_size_up = int(cfg.SOLVER.ITERS_PER_EPOCH / cfg.SOLVER.CYCLIC_PERIOD_PER_EPOCH / 2.0),
+                    step_size_down = int(cfg.SOLVER.ITERS_PER_EPOCH / cfg.SOLVER.CYCLIC_PERIOD_PER_EPOCH / 2.0),
+                )
+        else:
+            self.scheduler_norm = None
 
         self.checkpointer = Checkpointer(
             model,
             cfg.OUTPUT_DIR,
             save_to_disk=comm.is_main_process(),
-            optimizer=optimizer,
-            scheduler=self.scheduler,
+            optimizer_main=optimizer_main,
+            scheduler_main=self.scheduler_main,
+            optimizer_norm=optimizer_norm,
+            scheduler_norm=self.scheduler_norm,
         )
 
         self.start_iter = 0
@@ -261,6 +341,8 @@ class DefaultTrainer(SimpleTrainer):
             self.max_iter = cfg.SOLVER.MAX_ITER
         self.cfg = cfg
         self.register_hooks(self.build_hooks())
+
+
 
     def resume_or_load(self, resume=True):
         """
@@ -295,7 +377,10 @@ class DefaultTrainer(SimpleTrainer):
 
         ret = [
             hooks.IterationTimer(),
-            hooks.LRScheduler(self.optimizer, self.scheduler),
+            hooks.LRScheduler(self.optimizer_main,
+                              self.scheduler_main,
+                              self.optimizer_norm,
+                              self.scheduler_norm),
         ]
 
         if cfg.SOLVER.SWA.ENABLED:
@@ -324,7 +409,8 @@ class DefaultTrainer(SimpleTrainer):
             logger.info(f'Freeze layer group "{freeze_layers}" training for {cfg.SOLVER.FREEZE_ITERS:d} iterations')
             ret.append(hooks.FreezeLayer(
                 self.model,
-                self.optimizer,
+                self.optimizer_main,
+                self.optimizer_norm,
                 cfg.MODEL.FREEZE_LAYERS,
                 cfg.SOLVER.FREEZE_ITERS,
             ))
@@ -408,14 +494,14 @@ class DefaultTrainer(SimpleTrainer):
         # logger.info("Model:\n{}".format(model))
         return model
     @classmethod
-    def build_optimizer(cls, cfg, model):
+    def build_optimizer(cls, cfg, model, solver_opt, momentum, flag = None):
         """
         Returns:
             torch.optim.Optimizer:
         It now calls :func:`fastreid.solver.build_optimizer`.
         Overwrite it if you'd like a different optimizer.
         """
-        return build_optimizer(cfg, model)
+        return build_optimizer(cfg, model, solver_opt, momentum, flag)
     @classmethod
     def build_lr_scheduler(cls, optimizer, scheduler_method, warmup_factor,
                            warmup_iters, warmup_method, milestones,

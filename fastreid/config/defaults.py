@@ -44,10 +44,10 @@ _C.META.DATA.INDIVIDUAL = False # True-> split dataloader (high memory requireme
 _C.META.DATA.DROP_LAST = True
 _C.META.DATA.WHOLE = True
 
-_C.META.DATA.MTRAIN_MINI_BATCH = 80 # should be a multiply of num_domain x num_instance
-_C.META.DATA.MTRAIN_NUM_INSTANCE = 4
-_C.META.DATA.MTEST_MINI_BATCH = 80 # should be a multiply of num_domain x num_instance
-_C.META.DATA.MTEST_NUM_INSTANCE = 4
+_C.META.DATA.MTRAIN_MINI_BATCH = 10 # should be a multiply of num_domain x num_instance
+_C.META.DATA.MTRAIN_NUM_INSTANCE = 2
+_C.META.DATA.MTEST_MINI_BATCH = 10 # should be a multiply of num_domain x num_instance
+_C.META.DATA.MTEST_NUM_INSTANCE = 2
 
 _C.META.MODEL = CN()
 _C.META.MODEL.META_UPDATE_LAYER = ("bottleneck",) # "bottleneck","classifier","bnneck","pooling",
@@ -63,6 +63,7 @@ _C.META.SOLVER.LR_FACTOR.META_CYCLIC_RATIO = 10.0
 _C.META.SOLVER.LR_FACTOR.META_CYCLIC_PERIOD_PER_EPOCH = 4.0
 
 _C.META.SOLVER.INIT = CN()
+_C.META.SOLVER.INIT.FIRST_INNER_LOOP = 10 # basic init training depends on total iteration
 _C.META.SOLVER.INIT.INNER_LOOP = 1 # basic init training depends on total iteration
 _C.META.SOLVER.INIT.OUTER_LOOP = 5 # meta-training
 _C.META.SOLVER.INIT.TYPE_RUNNING_STATS = "general" # "general", "hold", "eval"
@@ -88,6 +89,12 @@ _C.META.SOLVER.MANUAL_ZERO_GRAD = 'zero' # 'zero', 'delete', 'hold' [delete->hig
 _C.META.SOLVER.MANUAL_MEMORY_EMPTY = True
 _C.META.SOLVER.AUTO_GRAD_OUTSIDE = True
 _C.META.SOLVER.INNER_CLAMP = True
+
+_C.META.NEW_SOLVER = CN()
+_C.META.NEW_SOLVER.MAIN_ZERO_GRAD = True # optimizer_main.zero_grad() after init
+_C.META.NEW_SOLVER.NORM_ZERO_GRAD = True # optimizer_norm.zero_grad() after init
+_C.META.NEW_SOLVER.MOMENTUM_INIT_GRAD = 0.0 # if more than 0.0, force to zero_Grad
+# (alpha) * init_grad + (1-alpha) * mtrain_grad
 
 _C.META.LOSS = CN()
 _C.META.LOSS.COMBINED = False # True: Mtotal = Mtrain + Mtest
@@ -249,6 +256,8 @@ _C.MODEL.NORM.BIN_INIT = 'one' # 'random', 'one', 'zero'
 _C.MODEL.NORM.IN_FC_MULTIPLY = 0.0 # applied when "IN" in fc
 _C.MODEL.NORM.LOAD_BN_AFFINE = True # change to False when IN
 _C.MODEL.NORM.LOAD_BN_RUNNING = True # change to False when IN
+_C.MODEL.NORM.LOAD_IN_AFFINE = True # change to False when IN
+_C.MODEL.NORM.LOAD_IN_RUNNING = True # change to False when IN
 _C.MODEL.NORM.TYPE_BACKBONE = "BN"
 _C.MODEL.NORM.TYPE_BOTTLENECK = "BN"
 _C.MODEL.NORM.TYPE_CLASSIFIER = "BN"
@@ -337,9 +346,14 @@ _C.DATALOADER.DROP_LAST = True
 # ---------------------------------------------------------------------------- #
 _C.SOLVER = CN()
 _C.SOLVER.AMP = True
+_C.SOLVER.NORM_SCHEDULER = "same"
 
 _C.SOLVER.OPT = "SGD"
+_C.SOLVER.OPT_NORM = "SGD"
 
+_C.SOLVER.CYCLIC_PERIOD_PER_EPOCH = 1.0
+_C.SOLVER.CYCLIC_MIN_LR = 0.0001
+_C.SOLVER.CYCLIC_MAX_LR = 0.01
 _C.SOLVER.MAX_ITER = 100
 
 _C.SOLVER.BASE_LR = 0.01
@@ -347,10 +361,12 @@ _C.SOLVER.BIAS_LR_FACTOR = 2.
 _C.SOLVER.HEADS_LR_FACTOR = 1.
 
 _C.SOLVER.MOMENTUM = 0.9
+_C.SOLVER.MOMENTUM_NORM = 0.9
 # _C.SOLVER.MOMENTUM = 0
 
 _C.SOLVER.WEIGHT_DECAY = 0.0005
 _C.SOLVER.WEIGHT_DECAY_BIAS = 0.0005
+_C.SOLVER.WEIGHT_DECAY_NORM = 0.0
 
 # Multi-step learning rate options
 _C.SOLVER.SCHED = "WarmupMultiStepLR"

@@ -8,7 +8,7 @@ from . import lr_scheduler
 from . import optim
 
 
-def build_optimizer(cfg, model):
+def build_optimizer(cfg, model, solver_opt, momentum, flag = None):
     params = []
     for key, value in model.named_parameters():
         # print(key)
@@ -26,16 +26,21 @@ def build_optimizer(cfg, model):
         if "gate" in key:
             print(key, value.shape)
             lr *= cfg.META.SOLVER.LR_FACTOR.GATE
-        params += [{"name": key, "params": [value], "lr": lr, "weight_decay": weight_decay, "freeze": False}]
 
-    solver_opt = cfg.SOLVER.OPT
+        if (flag == 'main') and ("gate" not in key):
+            params += [{"name": key, "params": [value], "lr": lr, "weight_decay": weight_decay, "freeze": False}]
+        elif (flag == 'norm') and ("gate" in key):
+            params += [{"name": key, "params": [value], "lr": lr, "weight_decay": cfg.SOLVER.WEIGHT_DECAY_NORM, "freeze": False}]
+
+        # params += [{"name": key, "params": [value], "lr": lr, "weight_decay": weight_decay, "freeze": False}]
+
     if hasattr(optim, solver_opt):
         if solver_opt == "SGD":
-            opt_fns = getattr(optim, solver_opt)(params, momentum=cfg.SOLVER.MOMENTUM)
+            opt_fns = getattr(optim, solver_opt)(params, momentum=momentum)
         else:
             opt_fns = getattr(optim, solver_opt)(params)
     else:
-        raise NameError("optimizer {} not support".format(cfg.SOLVER.OPT))
+        raise NameError("optimizer {} not support".format(solver_opt))
     return opt_fns
 
 

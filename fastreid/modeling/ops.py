@@ -6,6 +6,7 @@ from torch import nn
 import torch
 from torch.nn.parameter import Parameter
 import time
+import math
 import copy
 
 # class meta_linear(nn.Linear):
@@ -80,7 +81,6 @@ class meta_linear(nn.Linear):
         if use_meta_learning:
 
             start = time.perf_counter()
-            # if opt['zero_grad']: self.zero_grad()
             updated_weight = update_parameter(self.weight, self.w_step_size, opt)
             updated_bias = update_parameter(self.bias, self.b_step_size, opt)
             # print('meta_linear is computed')
@@ -89,7 +89,6 @@ class meta_linear(nn.Linear):
             return F.linear(inputs, updated_weight, updated_bias)
         else:
             return F.linear(inputs, self.weight, self.bias)
-
 class meta_conv2d(nn.Conv2d):
     # def __init__(self, weight, bias, stride = 1, padding = 0, dilation = 1, groups = 1):
     def __init__(self, in_channels, out_channels, kernel_size, stride = 1, padding = 0, dilation = 1, groups = 1, bias = True, padding_mode = 'zeros'):
@@ -104,18 +103,15 @@ class meta_conv2d(nn.Conv2d):
         else:
             use_meta_learning = False
         if use_meta_learning:
-            # if opt['zero_grad']: self.zero_grad()
             updated_weight = update_parameter(self.weight, self.w_step_size, opt)
             updated_bias = update_parameter(self.bias, self.b_step_size, opt)
             # print('meta_conv is computed')
             return F.conv2d(inputs, updated_weight, updated_bias, self.stride, self.padding, self.dilation, self.groups)
         else:
             return F.conv2d(inputs, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
-
-
 class Meta_bn_norm(nn.BatchNorm2d):
-    def __init__(self, num_features, norm_opt = None, eps=1e-05, momentum=0.1, affine=True,
-                 track_running_stats=True, weight_freeze = False, bias_freeze = False,
+    def __init__(self, num_features, norm_opt = None, eps=1e-05,
+                 momentum=0.1, weight_freeze = False, bias_freeze = False,
                  weight_init = 1.0, bias_init = 0.0):
 
         affine = True if norm_opt['BN_AFFINE'] else False
@@ -150,37 +146,30 @@ class Meta_bn_norm(nn.BatchNorm2d):
             updated_weight = update_parameter(self.weight, self.w_step_size, opt)
             updated_bias = update_parameter(self.bias, self.b_step_size, opt)
             # print('meta_bn is computed')
-
-            if norm_type == "general":
-                return F.batch_norm(inputs, self.running_mean, self.running_var,
-                                    updated_weight, updated_bias,
-                                    self.training, self.momentum, self.eps)
-            elif norm_type == "hold":
-                return F.batch_norm(inputs, None, None,
-                                    updated_weight, updated_bias,
-                                    self.training, self.momentum, self.eps)
-            elif norm_type == "eval":
-                return F.batch_norm(inputs, self.running_mean, self.running_var,
-                                    updated_weight, updated_bias,
-                                    False, self.momentum, self.eps)
         else:
+            updated_weight = self.weight
+            updated_bias = self.bias
 
-
-            if norm_type == "general":
-                return F.batch_norm(inputs, self.running_mean, self.running_var,
-                                    self.weight, self.bias,
-                                    self.training, self.momentum, self.eps)
-            elif norm_type == "hold":
+        if norm_type == "general": # update, but not apply running_mean/var
+            return F.batch_norm(inputs, self.running_mean, self.running_var,
+                                updated_weight, updated_bias,
+                                self.training, self.momentum, self.eps)
+        elif norm_type == "hold": # not update, not apply running_mean/var
+            return F.batch_norm(inputs, None, None,
+                                updated_weight, updated_bias,
+                                self.training, self.momentum, self.eps)
+        elif norm_type == "eval": # fix and apply running_mean/var,
+            if self.running_mean is None:
                 return F.batch_norm(inputs, None, None,
-                                    self.weight, self.bias,
-                                    self.training, self.momentum, self.eps)
-            elif norm_type == "eval":
+                                    updated_weight, updated_bias,
+                                    True, self.momentum, self.eps)
+            else:
                 return F.batch_norm(inputs, self.running_mean, self.running_var,
-                                    self.weight, self.bias,
+                                    updated_weight, updated_bias,
                                     False, self.momentum, self.eps)
 class Meta_in_norm(nn.InstanceNorm2d):
-    def __init__(self, num_features, norm_opt = None, eps=1e-05, momentum=0.1, affine=False,
-                 track_running_stats=False, weight_freeze = False, bias_freeze = False,
+    def __init__(self, num_features, norm_opt = None, eps=1e-05,
+                 momentum=0.1, weight_freeze = False, bias_freeze = False,
                  weight_init = 1.0, bias_init = 0.0):
 
         affine = True if norm_opt['IN_AFFINE'] else False
@@ -193,7 +182,6 @@ class Meta_in_norm(nn.InstanceNorm2d):
         if self.bias is not None:
             if bias_init is not None: self.bias.data.fill_(bias_init)
             self.bias.requires_grad_(not bias_freeze)
-        self.use_input_stats = True
         self.in_fc_multiply = norm_opt['IN_FC_MULTIPLY']
 
     def forward(self, inputs, opt = None):
@@ -212,6 +200,12 @@ class Meta_in_norm(nn.InstanceNorm2d):
                             use_meta_learning = True
             else:
                 use_meta_learning = False
+
+            if self.training:
+                norm_type = opt['type_running_stats']
+            else:
+                norm_type = "eval"
+
             if use_meta_learning and self.affine:
                 # if opt['zero_grad']: self.zero_grad()
                 updated_weight = update_parameter(self.weight, self.w_step_size, opt)
@@ -221,46 +215,48 @@ class Meta_in_norm(nn.InstanceNorm2d):
                 updated_weight = self.weight
                 updated_bias = self.bias
 
-            if self.training:
-                norm_type = opt['type_running_stats']
-            else:
-                norm_type = "eval"
 
-            if norm_type == "general" or norm_type == "eval":
+            if norm_type == "general":
                 return F.instance_norm(inputs, self.running_mean, self.running_var,
                                        updated_weight, updated_bias,
-                                       self.use_input_stats, self.momentum, self.eps)
+                                       self.training, self.momentum, self.eps)
             elif norm_type == "hold":
                 return F.instance_norm(inputs, None, None,
                                        updated_weight, updated_bias,
-                                       self.use_input_stats, self.momentum, self.eps)
-
-# -----------------------------------------
-
+                                       self.training, self.momentum, self.eps)
+            elif norm_type == "eval":
+                if self.running_mean is None:
+                    return F.instance_norm(inputs, None, None,
+                                           updated_weight, updated_bias,
+                                           True, self.momentum, self.eps)
+                else:
+                    return F.instance_norm(inputs, self.running_mean, self.running_var,
+                                           updated_weight, updated_bias,
+                                           False, self.momentum, self.eps)
 class Meta_bin_half(nn.Module):
-    def __init__(self, num_features, norm_opt = None, **kwargs):
-        super(Meta_bin_half, self).__init__()
-        half1 = int(num_features / 2)
+    def __init__(self, num_features, norm_opt=None, **kwargs):
+        super().__init__()
+
+        half1 = math.ceil(num_features / 2)
         self.half = half1
         half2 = num_features - half1
 
-        self.IN = Meta_in_norm(half1, norm_opt, **kwargs)
-        self.BN = Meta_bn_norm(half2, norm_opt, **kwargs)
+        self.bat_n = Meta_bn_norm(half1, norm_opt, **kwargs)
+        self.ins_n = Meta_in_norm(half2, norm_opt, **kwargs)
 
     def forward(self, inputs, opt = None):
-
         if inputs.dim() != 4:
             raise ValueError('expected 4D input (got {}D input)'.format(inputs.dim()))
 
+        # print(inputs.shape)
         split = torch.split(inputs, self.half, 1)
-        out1 = self.IN(split[0].contiguous(), opt)
-        out2 = self.BN(split[1].contiguous(), opt)
+        out1 = self.bat_n(split[0].contiguous(), opt)
+        out2 = self.ins_n(split[1].contiguous(), opt)
         out = torch.cat((out1, out2), 1)
-
         return out
 class Meta_bin_gate_ver1(nn.BatchNorm2d):
-    def __init__(self, num_features, norm_opt=None, eps=1e-05, momentum=0.1, affine=True,
-                 track_running_stats=True, weight_freeze=False, bias_freeze=False,
+    def __init__(self, num_features, norm_opt=None, eps=1e-05, momentum=0.1,
+                 weight_freeze=False, bias_freeze=False,
                  weight_init=1.0, bias_init=0.0):
 
         affine = True if norm_opt['BN_AFFINE'] else False
@@ -274,9 +270,9 @@ class Meta_bin_gate_ver1(nn.BatchNorm2d):
 
         self.gate = Parameter(torch.Tensor(num_features))
         if norm_opt['BIN_INIT'] == 'one':
-            self.gate.data.fill_(1)
+            self.gate.data.fill_(1.0)
         elif norm_opt['BIN_INIT'] == 'zero':
-            self.gate.data.fill_(0)
+            self.gate.data.fill_(0.0)
         elif norm_opt['BIN_INIT'] == 'half':
             self.gate.data.fill_(0.5)
         elif norm_opt['BIN_INIT'] == 'random':
@@ -359,30 +355,38 @@ class Meta_bin_gate_ver1(nn.BatchNorm2d):
             return out_bn + out_in
         else:
             return out_bn # 1D
-
-
-class Meta_bin_gate_ver2(nn.Module): # bn / in version
+class Meta_bin_gate_ver2(nn.Module):
     def __init__(self, num_features, norm_opt = None, **kwargs):
-        super(Meta_bin_gate_ver2, self).__init__()
+        super().__init__()
+
+        self.bat_n = Meta_bn_norm(num_features, norm_opt, **kwargs)
+        self.ins_n = Meta_in_norm(num_features, norm_opt, **kwargs)
 
         self.gate = Parameter(torch.Tensor(num_features))
-        self.gate.data.fill_(1)
+        if norm_opt['BIN_INIT'] == 'one':
+            self.gate.data.fill_(1.0)
+        elif norm_opt['BIN_INIT'] == 'zero':
+            self.gate.data.fill_(0.0)
+        elif norm_opt['BIN_INIT'] == 'half':
+            self.gate.data.fill_(0.5)
+        elif norm_opt['BIN_INIT'] == 'random':
+            self.gate.data = torch.rand(num_features)
         setattr(self.gate, 'bin_gate', True)
-
-        self.IN = Meta_in_norm(num_features, norm_opt, **kwargs)
-        self.BN = Meta_bn_norm(num_features, norm_opt, **kwargs)
 
     def forward(self, inputs, opt = None):
 
         if inputs.dim() != 4:
             raise ValueError('expected 4D input (got {}D input)'.format(inputs.dim()))
 
-        split = torch.split(inputs, self.half, 1)
-        out1 = self.IN(split[0].contiguous())
-        out2 = self.BN(split[1].contiguous())
-        out = torch.cat((out1, out2), 1)
+        out1 = self.bat_n(inputs, opt)
+        out2 = self.ins_n(inputs, opt)
+        # out = out1 * self.gate + out2 * (1 - self.gate)
+
+        out = out1.mul_(self.gate[None, :, None, None]) + \
+              out2.mul_((1 - self.gate[None, :, None, None]))
 
         return out
+
 def update_parameter(param, step_size, opt = None):
     loss = opt['meta_loss']
     use_second_order = opt['use_second_order']
@@ -424,9 +428,6 @@ def update_parameter(param, step_size, opt = None):
         return param
 
     return updated_param
-
-
-
 def meta_norm(norm, out_channels, norm_opt, **kwargs):
     if isinstance(norm, str):
         if len(norm) == 0:

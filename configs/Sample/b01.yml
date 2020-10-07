@@ -34,41 +34,8 @@ META:
     MTEST_NUM_INSTANCE: 4
 
   MODEL:
-    META_COMPUTE_LAYER: ('backbone_bn_gate',)
-#    META_COMPUTE_LAYER: ('backbone_conv','backbone_bn','backbone_bn_gate',)
+    META_COMPUTE_LAYER: ('backbone_bn_gate', )
     META_UPDATE_LAYER: ('backbone_bn_gate',)
-
-  # compute_meta_params = True
-  # 'layer1_conv' -> conv of layer1 (including downsample)
-  # 'backbone_conv' -> conv of entire layers (including downsample)
-  # 'layer1_bn' -> BN of layer1 (including downsample)
-  # 'backbone_bn' -> BN of entire layers (including downsample)
-  # 'backbone' -> all backbone (including conv, BN, BIN_gate)
-  # 'heads' -> all heads (including conv, BN, BIN_gate)
-  # 'classifier_fc' -> linear layer for CE
-  # 'classifier_norm' -> BN of BNNECK (normalization) [HEADS.NORM]
-  # 'bottleneck_fc' -> linear layer for bottleneck
-  # 'bottleneck_norm' -> BN of bottleneck [HEADS.BT_NORM]
-
-  # compute_meta_gates = True, need clamp
-  # 'bottleneck_norm_gate' -> BIN_gate of bottleneck [HEADS.BT_NORM = 'BIN_gate']
-  # 'classifier_norm_gate' -> BIN_gate of neck_norm [HEADS.NORM = 'BIN_gate']
-  # 'layer1_bn_gate' -> BIN_gate of layer1 (including downsample) [BACKBONE.NORM = 'BIN_gate']
-  # 'backbone_bn_gate' -> BIN_gate of entire layers (including downsample) [BACKBONE.NORM = 'BIN_gate']
-
-  # Exceptions
-  # backbone.conv1 when 'layer0' or 'layer0_conv'
-  # backbone.bn1 when 'layer0' or 'layer0_bn'
-  # backbone.layer1.0.downsample.0 <- backbone.layer1.0.conv1
-  # backbone.layer1.0.downsample.1 <- backbone.layer1.0.bn1
-  # backbone.layer2.0.downsample.0 <- backbone.layer2.0.conv1
-  # backbone.layer2.0.downsample.1 <- backbone.layer2.0.bn1
-  # backbone.layer3.0.downsample.0 <- backbone.layer3.0.conv1
-  # backbone.layer3.0.downsample.1 <- backbone.layer3.0.bn1
-  # backbone.layer4.0.downsample.0 <- backbone.layer4.0.conv1
-  # backbone.layer4.0.downsample.1 <- backbone.layer4.0.bn1
-
-  # MLDG -> compute == update -> 'layer', 'heads'
 
 
   SOLVER:
@@ -76,14 +43,13 @@ META:
     LR_FACTOR:
       GATE: 1.0 # bigger -> fast update, if 0 -> cyclic
       META: 1.0 # bigger -> meta_train ratio, if 0 -> cyclic
-#      GATE_CYCLIC_RATIO: 10.0 # > 1.0
-#      GATE_CYCLIC_PERIOD_PER_EPOCH: 4.0 # > 1.0
-      META_CYCLIC_RATIO: 5.0
-      META_CYCLIC_PERIOD_PER_EPOCH: 1.0
+      META_CYCLIC_RATIO: 10.0
+      META_CYCLIC_PERIOD_PER_EPOCH: 2.0
       # MTrain-stepsize -> B_LR*(Compute param LR)*META_UPDATE (if gate)
       # MTest-stepsize -> B_LR*GATE(Update param LR)
 
     INIT:
+      FIRST_INNER_LOOP: 10 # basic init training depends on total iteration (num of backward)
       INNER_LOOP: 1 # basic init training depends on total iteration (num of backward)
       OUTER_LOOP: 1 # meta-training (num of backward) [Shuffled]
       TYPE_RUNNING_STATS: "general" # "general", "hold", "eval"
@@ -95,10 +61,7 @@ META:
       INNER_LOOP: 1 # Accumulate losses [Select Shuffle]
       SHUFFLE_DOMAIN: True # True->shuffle domain when outerloop
       SECOND_ORDER: True # [True fix!] second order
-      ALLOW_UNUSED: False # [False->low memory/True->high memory] False->MLDG, True->MAML
       NUM_DOMAIN: 3
-      FREEZE_GRAD_META: True # [True->low memory] freeze gradient_requires w/o update and compute parameters
-      BEFORE_ZERO_GRAD: True # [?] False->MLDG, True->MAML
       TYPE_RUNNING_STATS: "general" # "general", "hold", "eval"
 
     MTEST:
@@ -108,9 +71,12 @@ META:
     SYNC: True # [True]
     DETAIL_MODE: True # True-> print detail info
     STOP_GRADIENT: True # [False->slow..]
-    MANUAL_ZERO_GRAD: 'delete' # 'zero', 'delete', 'hold' [delete->high memory, but completely delete] weight.grad = None
-    MANUAL_MEMORY_EMPTY: False # [True->slow, but low memory]
     INNER_CLAMP: True # [True->slow, but low memory]
+
+  NEW_SOLVER:
+    MAIN_ZERO_GRAD: True # True
+    NORM_ZERO_GRAD: True
+    MOMENTUM_INIT_GRAD: 0.0 # if more than 0.5, stop_gradient
 
   LOSS:
     COMBINED: False # True-> Mtotal = Mtrain + Mtest
@@ -123,17 +89,17 @@ MODEL:
   META_ARCHITECTURE: "Metalearning"
   BACKBONE:
     NAME: "build_mobilenet_v2_backbone" # "build_resnet_backbone", "build_mobilenet_v2_backbone"
-    DEPTH: 14 # ResNet->18,34,50,101,152, Mobilenet->10,14
+    DEPTH: 14 # ResNet->18,34,50,101, Mobilenet->10,14
     WITH_IBN: False  # 'pretrained/resnet50_ibn_a.pth'
     WITH_NL: False
     PRETRAIN: True
     PRETRAIN_PATH: 'pretrained/mobilenetv2_1.4.pth' # 'pretrained/mobilenetv2_1.0.pth' or 'pretrained/mobilenetv2_1.4.pth'
-    NUM_BATCH_TRACKED: True # default: False (resnet)
+    NUM_BATCH_TRACKED: False # default: False (resnet)
     LAST_STRIDE: 1
   HEADS:
-    IN_FEAT: 1792 # ResNet 2048, Mobilenet w1.0 1280, w1.4 1792
+    IN_FEAT: 1792 # ResNet18,34->512 ResNet50,101->2048, Mobilenet w1.0->1280, w1.4->1792
     NAME: "MetalearningHead"
-    POOL_LAYER: "avgpool" # 'fastavgpool', 'avgpool', 'maxpool', 'gempoolP', 'gempool', 'avgmaxpool', 'clipavgpool', 'identity'
+    POOL_LAYER: "gempool" # 'fastavgpool', 'avgpool', 'maxpool', 'gempoolP', 'gempool', 'avgmaxpool', 'clipavgpool', 'identity'
     CLS_LAYER: "linear" # 'linear', 'arcSoftmax(x)', 'circleSoftmax', 'amSoftmax(poor)'
   LOSSES:
     CE:
@@ -176,10 +142,12 @@ MODEL:
     BIN_INIT: 'one' # 'random', 'one', 'zero', 'half' (optional)
     IN_FC_MULTIPLY: 0.0 # applied when "IN" in fc
 
-    LOAD_BN_AFFINE: False # (optional)
+    LOAD_BN_AFFINE: True # (optional)
     LOAD_BN_RUNNING: True # change to False when TYPE_BACKBONE = "IN" & IN_RUNNING = False (optional)
+    LOAD_IN_AFFINE: True
+    LOAD_IN_RUNNING: True
 
-    TYPE_BACKBONE: "BIN_gate1"
+    TYPE_BACKBONE: "BIN_gate2"
     TYPE_BOTTLENECK: "BN" # "BN", "BIN_half", "BIN_gate1" (original), "BIN_gate2" [IN_FC_MULTIPLY]
     TYPE_CLASSIFIER: "BN" #
 
@@ -202,8 +170,15 @@ DATALOADER:
 SOLVER:
   AMP: True
   OPT: "SGD" # SGD
+  OPT_NORM: "SGD" # SGD
+  MOMENTUM: 0.9
+  MOMENTUM_NORM: 0.0 # 0.0
+
+  CYCLIC_PERIOD_PER_EPOCH: 1.0
+  CYCLIC_MIN_LR: 0.0001
+  CYCLIC_MAX_LR: 0.01
+  NORM_SCHEDULER: 'same' # 'same', 'no_warm', 'equal', 'cyclic'
   BASE_LR: 0.01 # 0.01
-#  BASE_LR: 0.1 # 0.01
   ETA_MIN_LR: 7.7e-5
 
   MAX_ITER: 70 # vehicle: 100
@@ -216,9 +191,9 @@ SOLVER:
   IMS_PER_BATCH: 80 # per each domain -> 80 : 5000MiB
   WEIGHT_DECAY: 0.0005
   WEIGHT_DECAY_BIAS: 0.0005
+  WEIGHT_DECAY_NORM: 0.0 # 0.0
   WRITE_PERIOD: 100
   WRITE_PERIOD_BIN: 100
-  MOMENTUM: 0.9
 
 TEST:
   EVAL_PERIOD: 5
