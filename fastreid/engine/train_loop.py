@@ -375,6 +375,26 @@ class SimpleTrainer(TrainerBase):
         for name, val in loss_dict.items(): metrics_dict[name] = val
         metrics_dict["data_time"] = data_time
         self._write_metrics(metrics_dict)
+
+
+        with torch.no_grad():
+            if len(self.bin_names) > 0 and (self.iter + 1) % (self.cfg.SOLVER.WRITE_PERIOD_BIN) == 0:
+                start = time.perf_counter()
+                all_gate_dict = dict()
+                for j in range(len(self.bin_names)):
+                    name = '_'.join(self.bin_names[j].split('.')[1:]).\
+                        replace('bn', 'b').replace('gate','g').replace('layer', 'l').replace('conv','c')
+                    val_mean = torch.mean(self.bin_gates[j].data).tolist()
+                    val_std = torch.std(self.bin_gates[j].data).tolist()
+                    val_hist = torch.histc(self.bin_gates[j].data, bins=20, min=0.0, max=1.0).int()
+                    all_gate_dict[name + '_mean']= val_mean
+                    all_gate_dict[name + '_std']= val_std
+                    for x in torch.nonzero(val_hist.data):
+                        all_gate_dict[name + '_hist' + str(x[0].tolist())] = val_hist[x[0]].tolist()
+                    # all_gate_dict['hist_' + name]= str(val_hist.tolist()).replace(' ','')
+                self.storage.put_scalars(**all_gate_dict, smoothing_hint=False)
+                # print(time.perf_counter() - start)
+
         # if self.iter % (self.cfg.SOLVER.WRITE_PERIOD_PARAM * self.cfg.SOLVER.WRITE_PERIOD) == 0:
         #     self.logger_parameter_info(self.model)
     def run_step_meta_learning1(self):

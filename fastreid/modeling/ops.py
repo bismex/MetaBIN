@@ -114,6 +114,11 @@ class Meta_bn_norm(nn.BatchNorm2d):
                  momentum=0.1, weight_freeze = False, bias_freeze = False,
                  weight_init = 1.0, bias_init = 0.0):
 
+        if not weight_freeze:
+            weight_freeze = norm_opt['BN_W_FREEZE']
+        if not bias_freeze:
+            bias_freeze = norm_opt['BN_B_FREEZE']
+
         affine = True if norm_opt['BN_AFFINE'] else False
         track_running_stats = True if norm_opt['BN_RUNNING'] else False
         super().__init__(num_features, eps, momentum, affine, track_running_stats)
@@ -171,6 +176,11 @@ class Meta_in_norm(nn.InstanceNorm2d):
     def __init__(self, num_features, norm_opt = None, eps=1e-05,
                  momentum=0.1, weight_freeze = False, bias_freeze = False,
                  weight_init = 1.0, bias_init = 0.0):
+
+        if not weight_freeze:
+            weight_freeze = norm_opt['IN_W_FREEZE']
+        if not bias_freeze:
+            bias_freeze = norm_opt['IN_B_FREEZE']
 
         affine = True if norm_opt['IN_AFFINE'] else False
         track_running_stats = True if norm_opt['IN_RUNNING'] else False
@@ -258,6 +268,12 @@ class Meta_bin_gate_ver1(nn.BatchNorm2d):
     def __init__(self, num_features, norm_opt=None, eps=1e-05, momentum=0.1,
                  weight_freeze=False, bias_freeze=False,
                  weight_init=1.0, bias_init=0.0):
+
+
+        if not weight_freeze:
+            weight_freeze = norm_opt['BN_W_FREEZE']
+        if not bias_freeze:
+            bias_freeze = norm_opt['BN_B_FREEZE']
 
         affine = True if norm_opt['BN_AFFINE'] else False
         track_running_stats = True if norm_opt['BN_RUNNING'] else False

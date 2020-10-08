@@ -250,14 +250,22 @@ _C.MODEL.LOSSES.FL.SCALE = 1.0
 _C.MODEL.NORM = CN()
 _C.MODEL.NORM.BN_AFFINE = True # learn w,b
 _C.MODEL.NORM.BN_RUNNING = True # apply running mean, var
-_C.MODEL.NORM.IN_AFFINE = False # learn w,b
+_C.MODEL.NORM.IN_AFFINE = True # learn w,b
 _C.MODEL.NORM.IN_RUNNING = False # apply running mean, var
 _C.MODEL.NORM.BIN_INIT = 'one' # 'random', 'one', 'zero'
 _C.MODEL.NORM.IN_FC_MULTIPLY = 0.0 # applied when "IN" in fc
 _C.MODEL.NORM.LOAD_BN_AFFINE = True # change to False when IN
 _C.MODEL.NORM.LOAD_BN_RUNNING = True # change to False when IN
 _C.MODEL.NORM.LOAD_IN_AFFINE = True # change to False when IN
-_C.MODEL.NORM.LOAD_IN_RUNNING = True # change to False when IN
+_C.MODEL.NORM.LOAD_IN_RUNNING = False # change to False when IN
+
+_C.MODEL.NORM.BN_W_FREEZE = False
+_C.MODEL.NORM.BN_B_FREEZE = False
+_C.MODEL.NORM.IN_W_FREEZE = False
+_C.MODEL.NORM.IN_B_FREEZE = False
+
+
+
 _C.MODEL.NORM.TYPE_BACKBONE = "BN"
 _C.MODEL.NORM.TYPE_BOTTLENECK = "BN"
 _C.MODEL.NORM.TYPE_CLASSIFIER = "BN"

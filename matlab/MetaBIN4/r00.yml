@@ -158,7 +158,7 @@ DATASETS:
 
 DATALOADER:
   NUM_INSTANCE: 4
-  NUM_WORKERS: 3
+  NUM_WORKERS: 2
   NAIVE_WAY: True # True-> random, False-> same domain
   DELETE_REM: False # when false -> more images
   INDIVIDUAL: False

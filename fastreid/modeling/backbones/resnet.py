@@ -267,6 +267,12 @@ def build_resnet_backbone(cfg):
     norm_opt['BN_RUNNING'] = cfg.MODEL.NORM.BN_RUNNING
     norm_opt['IN_AFFINE'] = cfg.MODEL.NORM.IN_AFFINE
     norm_opt['IN_RUNNING'] = cfg.MODEL.NORM.IN_RUNNING
+
+    norm_opt['BN_W_FREEZE'] = cfg.MODEL.NORM.BN_W_FREEZE
+    norm_opt['BN_B_FREEZE'] = cfg.MODEL.NORM.BN_B_FREEZE
+    norm_opt['IN_W_FREEZE'] = cfg.MODEL.NORM.IN_W_FREEZE
+    norm_opt['IN_B_FREEZE'] = cfg.MODEL.NORM.IN_B_FREEZE
+
     norm_opt['BIN_INIT'] = cfg.MODEL.NORM.BIN_INIT
     norm_opt['IN_FC_MULTIPLY'] = cfg.MODEL.NORM.IN_FC_MULTIPLY
     num_splits = cfg.MODEL.BACKBONE.NORM_SPLIT

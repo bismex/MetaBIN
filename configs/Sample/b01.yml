@@ -147,6 +147,11 @@ MODEL:
     LOAD_IN_AFFINE: True
     LOAD_IN_RUNNING: True
 
+    BN_W_FREEZE: False
+    BN_B_FREEZE: False
+    IN_W_FREEZE: False
+    IN_B_FREEZE: False
+
     TYPE_BACKBONE: "BIN_gate2"
     TYPE_BOTTLENECK: "BN" # "BN", "BIN_half", "BIN_gate1" (original), "BIN_gate2" [IN_FC_MULTIPLY]
     TYPE_CLASSIFIER: "BN" #
@@ -162,7 +167,7 @@ DATASETS:
 
 DATALOADER:
   NUM_INSTANCE: 4
-  NUM_WORKERS: 3
+  NUM_WORKERS: 2
   NAIVE_WAY: True # True-> random, False-> same domain
   DELETE_REM: False # when false -> more images
   INDIVIDUAL: False
