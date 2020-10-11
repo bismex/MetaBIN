@@ -4,8 +4,8 @@ INPUT:
   SIZE_TEST: [256, 128] # vehicle: [256,256]
   DO_AUTOAUG: False
   CJ:
-    ENABLED: True
-  DO_AUGMIX: True
+    ENABLED: False
+  DO_AUGMIX: False
   RPT:
     ENABLED: False
   REA:
@@ -36,21 +36,20 @@ META:
   MODEL:
     META_COMPUTE_LAYER: ('backbone_bn_gate', )
     META_UPDATE_LAYER: ('backbone_bn_gate',)
-
+    ALL_PARAMS: False
 
   SOLVER:
-
     LR_FACTOR:
-      GATE: 1.0 # bigger -> fast update, if 0 -> cyclic
-      META: 1.0 # bigger -> meta_train ratio, if 0 -> cyclic
+      GATE: 10.0 # bigger -> fast update, if 0 -> cyclic
+      META: 0.0 # bigger -> meta_train ratio, if 0 -> cyclic
       META_CYCLIC_RATIO: 10.0
       META_CYCLIC_PERIOD_PER_EPOCH: 2.0
       # MTrain-stepsize -> B_LR*(Compute param LR)*META_UPDATE (if gate)
       # MTest-stepsize -> B_LR*GATE(Update param LR)
 
     INIT:
-      FIRST_INNER_LOOP: 10 # basic init training depends on total iteration (num of backward)
-      INNER_LOOP: 1 # basic init training depends on total iteration (num of backward)
+      FIRST_INNER_LOOP: 0 # basic init training depends on total iteration (num of backward)
+      INNER_LOOP: 0 # basic init training depends on total iteration (num of backward)
       OUTER_LOOP: 1 # meta-training (num of backward) [Shuffled]
       TYPE_RUNNING_STATS: "general" # "general", "hold", "eval"
       # general-> w,b is trained, running_stats are updated
@@ -81,7 +80,7 @@ META:
   LOSS:
     COMBINED: False # True-> Mtotal = Mtrain + Mtest
     WEIGHT: 1.0 # w * MTRAIN + MTEST (when combined)
-    MTRAIN_NAME: ("TripletLoss_mtrain",) # "CrossEntropyLoss", "TripletLoss_mtrain", "MMD", "JSD", "STD", "GRL"
+    MTRAIN_NAME: ("CrossEntropyLoss", "TripletLoss_mtrain",) # "CrossEntropyLoss", "TripletLoss_mtrain", "MMD", "JSD", "STD", "GRL"
     MTEST_NAME: ("CrossEntropyLoss", "TripletLoss_mtest",) # "CrossEntropyLoss", "TripletLoss_mtest"
 
 
@@ -89,17 +88,17 @@ MODEL:
   META_ARCHITECTURE: "Metalearning"
   BACKBONE:
     NAME: "build_mobilenet_v2_backbone" # "build_resnet_backbone", "build_mobilenet_v2_backbone"
-    DEPTH: 14 # ResNet->18,34,50,101, Mobilenet->10,14
+    DEPTH: 14 # ResNet->18,34,50,101,152, Mobilenet->10,14
     WITH_IBN: False  # 'pretrained/resnet50_ibn_a.pth'
     WITH_NL: False
     PRETRAIN: True
     PRETRAIN_PATH: 'pretrained/mobilenetv2_1.4.pth' # 'pretrained/mobilenetv2_1.0.pth' or 'pretrained/mobilenetv2_1.4.pth'
-    NUM_BATCH_TRACKED: False # default: False (resnet)
+    NUM_BATCH_TRACKED: False # default-> False (resnet)
     LAST_STRIDE: 1
   HEADS:
-    IN_FEAT: 1792 # ResNet18,34->512 ResNet50,101->2048, Mobilenet w1.0->1280, w1.4->1792
+    IN_FEAT: 1792 # ResNet 2048, Mobilenet w1.0 1280, w1.4 1792
     NAME: "MetalearningHead"
-    POOL_LAYER: "gempool" # 'fastavgpool', 'avgpool', 'maxpool', 'gempoolP', 'gempool', 'avgmaxpool', 'clipavgpool', 'identity'
+    POOL_LAYER: "avgpool" # 'fastavgpool', 'avgpool', 'maxpool', 'gempoolP', 'gempool', 'avgmaxpool', 'clipavgpool', 'identity'
     CLS_LAYER: "linear" # 'linear', 'arcSoftmax(x)', 'circleSoftmax', 'amSoftmax(poor)'
   LOSSES:
     CE:
@@ -138,14 +137,14 @@ MODEL:
     BN_AFFINE: True # learn w,b (required)
     BN_RUNNING: True # apply running mean, var (required)
     IN_AFFINE: True # learn w,b (optional)
-    IN_RUNNING: True # apply running mean, var (optional)
+    IN_RUNNING: False # apply running mean, var (optional)
     BIN_INIT: 'one' # 'random', 'one', 'zero', 'half' (optional)
     IN_FC_MULTIPLY: 0.0 # applied when "IN" in fc
 
     LOAD_BN_AFFINE: True # (optional)
     LOAD_BN_RUNNING: True # change to False when TYPE_BACKBONE = "IN" & IN_RUNNING = False (optional)
-    LOAD_IN_AFFINE: True
-    LOAD_IN_RUNNING: True
+    LOAD_IN_AFFINE: False
+    LOAD_IN_RUNNING: False
 
     BN_W_FREEZE: False
     BN_B_FREEZE: False
@@ -182,7 +181,7 @@ SOLVER:
   CYCLIC_PERIOD_PER_EPOCH: 1.0
   CYCLIC_MIN_LR: 0.0001
   CYCLIC_MAX_LR: 0.01
-  NORM_SCHEDULER: 'same' # 'same', 'no_warm', 'equal', 'cyclic'
+  NORM_SCHEDULER: 'equal' # 'same', 'no_warm', 'equal', 'cyclic'
   BASE_LR: 0.01 # 0.01
   ETA_MIN_LR: 7.7e-5
 
@@ -192,7 +191,7 @@ SOLVER:
   WARMUP_FACTOR: 0.01
   WARMUP_ITERS: 10
 
-  CHECKPOINT_PERIOD: 10
+  CHECKPOINT_PERIOD: 5
   IMS_PER_BATCH: 80 # per each domain -> 80 : 5000MiB
   WEIGHT_DECAY: 0.0005
   WEIGHT_DECAY_BIAS: 0.0005

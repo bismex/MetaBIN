@@ -52,6 +52,7 @@ _C.META.DATA.MTEST_NUM_INSTANCE = 2
 _C.META.MODEL = CN()
 _C.META.MODEL.META_UPDATE_LAYER = ("bottleneck",) # "bottleneck","classifier","bnneck","pooling",
 _C.META.MODEL.META_COMPUTE_LAYER = ("bottleneck",) # "bottleneck","classifier","bnneck","pooling",
+_C.META.MODEL.ALL_PARAMS = False # for MLDG
 
 _C.META.SOLVER = CN()
 _C.META.SOLVER.LR_FACTOR = CN()
@@ -405,7 +406,7 @@ _C.SOLVER.CHECKPOINT_PERIOD = 20
 
 _C.SOLVER.WRITE_PERIOD = 100
 _C.SOLVER.WRITE_PERIOD_BIN = 100
-_C.SOLVER.WRITE_PERIOD_PARAM = 5
+_C.SOLVER.WRITE_PERIOD_PARAM = 100
 
 # Number of images per batch across all machines.
 # This is global, so if we have 8 GPUs and IMS_PER_BATCH = 16, each GPU will

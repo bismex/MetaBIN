@@ -84,15 +84,26 @@ class MobileNetV2(nn.Module):
         self.feature_dim = int(1280 * width_mult) if width_mult > 1 else 1280
 
         # construct layers
-        self.layer1 = ConvBlock(3, self.in_channels, 3, s=2, p=1, bn_norm = bn_norm, norm_opt = norm_opt) # IN <- dualnorm
-        self.layer2 = self._make_layer(Bottleneck, 1, int(16 * width_mult), 1, 1, bn_norm = bn_norm, norm_opt = norm_opt) # IN <- dualnorm
-        self.layer3 = self._make_layer(Bottleneck, 6, int(24 * width_mult), 2, 2, bn_norm = bn_norm, norm_opt = norm_opt) # IN <- dualnorm
-        self.layer4 = self._make_layer(Bottleneck, 6, int(32 * width_mult), 3, 2, bn_norm = bn_norm, norm_opt = norm_opt) # IN <- dualnorm
-        self.layer5 = self._make_layer(Bottleneck, 6, int(64 * width_mult), 4, 2, bn_norm = bn_norm, norm_opt = norm_opt) # IN <- dualnorm
-        self.layer6 = self._make_layer(Bottleneck, 6, int(96 * width_mult), 3, 1, bn_norm = bn_norm, norm_opt = norm_opt) # IN <- dualnorm
-        self.layer7 = self._make_layer(Bottleneck, 6, int(160 * width_mult), 3, last_stride, bn_norm = bn_norm, norm_opt = norm_opt)
-        self.layer8 = self._make_layer(Bottleneck, 6, int(320 * width_mult), 1, 1, bn_norm = bn_norm, norm_opt = norm_opt)
-        self.layer9 = ConvBlock(self.in_channels, self.feature_dim, 1, bn_norm = bn_norm, norm_opt = norm_opt)
+        if bn_norm == 'DualNorm':
+            self.layer1 = ConvBlock(3, self.in_channels, 3, s=2, p=1, bn_norm = 'IN', norm_opt = norm_opt) # IN <- dualnorm
+            self.layer2 = self._make_layer(Bottleneck, 1, int(16 * width_mult), 1, 1, bn_norm = 'IN', norm_opt = norm_opt) # IN <- dualnorm
+            self.layer3 = self._make_layer(Bottleneck, 6, int(24 * width_mult), 2, 2, bn_norm = 'IN', norm_opt = norm_opt) # IN <- dualnorm
+            self.layer4 = self._make_layer(Bottleneck, 6, int(32 * width_mult), 3, 2, bn_norm = 'IN', norm_opt = norm_opt) # IN <- dualnorm
+            self.layer5 = self._make_layer(Bottleneck, 6, int(64 * width_mult), 4, 2, bn_norm = 'IN', norm_opt = norm_opt) # IN <- dualnorm
+            self.layer6 = self._make_layer(Bottleneck, 6, int(96 * width_mult), 3, 1, bn_norm = 'IN', norm_opt = norm_opt) # IN <- dualnorm
+            self.layer7 = self._make_layer(Bottleneck, 6, int(160 * width_mult), 3, last_stride, bn_norm = 'BN', norm_opt = norm_opt)
+            self.layer8 = self._make_layer(Bottleneck, 6, int(320 * width_mult), 1, 1, bn_norm = 'BN', norm_opt = norm_opt)
+            self.layer9 = ConvBlock(self.in_channels, self.feature_dim, 1, bn_norm = 'BN', norm_opt = norm_opt)
+        else:
+            self.layer1 = ConvBlock(3, self.in_channels, 3, s=2, p=1, bn_norm = bn_norm, norm_opt = norm_opt) # IN <- dualnorm
+            self.layer2 = self._make_layer(Bottleneck, 1, int(16 * width_mult), 1, 1, bn_norm = bn_norm, norm_opt = norm_opt) # IN <- dualnorm
+            self.layer3 = self._make_layer(Bottleneck, 6, int(24 * width_mult), 2, 2, bn_norm = bn_norm, norm_opt = norm_opt) # IN <- dualnorm
+            self.layer4 = self._make_layer(Bottleneck, 6, int(32 * width_mult), 3, 2, bn_norm = bn_norm, norm_opt = norm_opt) # IN <- dualnorm
+            self.layer5 = self._make_layer(Bottleneck, 6, int(64 * width_mult), 4, 2, bn_norm = bn_norm, norm_opt = norm_opt) # IN <- dualnorm
+            self.layer6 = self._make_layer(Bottleneck, 6, int(96 * width_mult), 3, 1, bn_norm = bn_norm, norm_opt = norm_opt) # IN <- dualnorm
+            self.layer7 = self._make_layer(Bottleneck, 6, int(160 * width_mult), 3, last_stride, bn_norm = bn_norm, norm_opt = norm_opt)
+            self.layer8 = self._make_layer(Bottleneck, 6, int(320 * width_mult), 1, 1, bn_norm = bn_norm, norm_opt = norm_opt)
+            self.layer9 = ConvBlock(self.in_channels, self.feature_dim, 1, bn_norm = bn_norm, norm_opt = norm_opt)
 
     def _make_layer(self, block, t, c, n, s, bn_norm = 'BN', norm_opt = None):
         # t: expansion factor

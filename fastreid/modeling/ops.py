@@ -80,11 +80,11 @@ class meta_linear(nn.Linear):
             use_meta_learning = False
         if use_meta_learning:
 
-            start = time.perf_counter()
+            # start = time.perf_counter()
             updated_weight = update_parameter(self.weight, self.w_step_size, opt)
             updated_bias = update_parameter(self.bias, self.b_step_size, opt)
             # print('meta_linear is computed')
-            print(time.perf_counter() - start)
+            # print(time.perf_counter() - start)
 
             return F.linear(inputs, updated_weight, updated_bias)
         else:
@@ -154,7 +154,6 @@ class Meta_bn_norm(nn.BatchNorm2d):
         else:
             updated_weight = self.weight
             updated_bias = self.bias
-
         if norm_type == "general": # update, but not apply running_mean/var
             return F.batch_norm(inputs, self.running_mean, self.running_var,
                                 updated_weight, updated_bias,
@@ -394,12 +393,31 @@ class Meta_bin_gate_ver2(nn.Module):
         if inputs.dim() != 4:
             raise ValueError('expected 4D input (got {}D input)'.format(inputs.dim()))
 
+
+        if opt != None:
+            use_meta_learning_gates = False
+            if opt['param_update']:
+                if self.compute_meta_gates:
+                    use_meta_learning_gates = True
+        else:
+            use_meta_learning_gates = False
+
+        if use_meta_learning_gates:
+            update_gate = update_parameter(self.gate, self.g_step_size, opt)
+            if opt['inner_clamp']:
+                update_gate.data.clamp_(min=0, max=1)
+            # print(update_gate[0].data.cpu())
+        else:
+            update_gate = self.gate
+
+
         out1 = self.bat_n(inputs, opt)
         out2 = self.ins_n(inputs, opt)
         # out = out1 * self.gate + out2 * (1 - self.gate)
 
-        out = out1.mul_(self.gate[None, :, None, None]) + \
-              out2.mul_((1 - self.gate[None, :, None, None]))
+
+        out = out1.mul_(update_gate[None, :, None, None]) + \
+              out2.mul_((1 - update_gate[None, :, None, None]))
 
         return out
 
@@ -408,12 +426,12 @@ def update_parameter(param, step_size, opt = None):
     use_second_order = opt['use_second_order']
     allow_unused = opt['allow_unused']
     stop_gradient = opt['stop_gradient']
-
     flag_update = False
     if step_size is not None:
         if not stop_gradient:
             if param is not None:
                 if opt['auto_grad_outside']:
+                    # print("[GRAD]{} [PARAM]{}".format(opt['grad_params'][0].data.shape, param.data.shape))
                     # outer
                     updated_param = param - step_size * opt['grad_params'][0]
                     del opt['grad_params'][0]
@@ -429,6 +447,7 @@ def update_parameter(param, step_size, opt = None):
             if param is not None:
 
                 if opt['auto_grad_outside']:
+                    # print("[GRAD]{} [PARAM]{}".format(opt['grad_params'][0].data.shape, param.data.shape))
                     # outer
                     updated_param = param - step_size * opt['grad_params'][0]
                     del opt['grad_params'][0]

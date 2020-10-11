@@ -53,10 +53,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--folder_dir', default='../logs')
     parser.add_argument('--folder_name', default='Sample')
-    parser.add_argument('--start_name', default='r21')
-    parser.add_argument('--end_name', default='r22')
-    parser.add_argument('--except_number', default='1')
+    parser.add_argument('--start_name', default='dualnorm7')
+    parser.add_argument('--end_name', default='dualnorm8')
+    parser.add_argument('--except_number', default='99')
     parser.add_argument('--max_only', default='0')
+    parser.add_argument('--name_length', default='8')
+    parser.add_argument('--print_none', default='1')
+    parser.add_argument('--zfill', default='2')
 
     parser.add_argument('--bin_stat', default='1')
     parser.add_argument('--num_sampling', default='10')
@@ -73,10 +76,13 @@ if __name__ == "__main__":
     num_sampling = int(args.num_sampling)
     except_number = args.except_number
     except_number = [int(x) for x in except_number.split(',')]
+    name_length = int(args.name_length)
+    print_none = int(args.print_none)
 
-    txt_name = start_name[0]
-    start_num = int(start_name[1:])
-    end_num = int(end_name[1:])
+    txt_name = start_name[0:name_length]
+    start_num = int(start_name[name_length:])
+    end_num = int(end_name[name_length:])
+
 
     acc_main_txt = "** all_average **/Rank-1"
     acc_txt = []
@@ -97,7 +103,7 @@ if __name__ == "__main__":
         os.mkdir(bin_folder_path)
 
     for i in range(start_num, end_num + 1):
-        case = txt_name + str(i).zfill(2)
+        case = txt_name + str(i).zfill(int(args.zfill))
         file_name = os.path.join(folder_dir, folder_name, case, 'metrics.json')
         # print(case)
         if os.path.isfile(file_name) and i not in except_number:
@@ -187,8 +193,10 @@ if __name__ == "__main__":
                                                     "%2.2f"%round(acc_dict[acc_main_txt][final_idx] * 100, 2))
                     print(all_txt)
             else:
-                print('[{}] not exist'.format(case))
+                if print_none == 1:
+                    print('[{}] not exist'.format(case))
         else:
             if i not in except_number:
-                print('[{}] not exist'.format(case))
+                if print_none == 1:
+                    print('[{}] not exist'.format(case))
 

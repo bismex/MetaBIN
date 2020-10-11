@@ -214,8 +214,8 @@ class SimpleTrainer(TrainerBase):
             self.inner_clamp = True
             self.print_flag = False
 
-            # allocate whether each layer applies meta_learning
-            self.all_layers = dict()
+            # allocate whether each layer applies meta_learning (important!)
+            self.all_layers = dict() # find all parameters
             for name, param in self.model.named_parameters():
                 name = '.'.join(name.split('.')[:-1])
                 raw_name = copy.copy(name)
@@ -230,7 +230,7 @@ class SimpleTrainer(TrainerBase):
                     self.all_layers[name]['name'] = name
                     self.all_layers[name]['raw_name'] = raw_name
 
-            for name, val in self.all_layers.items():
+            for name, val in self.all_layers.items(): # allocate ordered index corresponding to each parameter
                 self.all_layers[name]['w_param_idx'] = None
                 self.all_layers[name]['b_param_idx'] = None
                 self.all_layers[name]['g_param_idx'] = None
@@ -239,54 +239,67 @@ class SimpleTrainer(TrainerBase):
                         self.all_layers[name]['w_param_idx'] = i
                     if val['raw_name'] + '.bias' == g['name']:
                         self.all_layers[name]['b_param_idx'] = i
-                for i, g in enumerate(self.optimizer_norm.param_groups):
-                    if val['raw_name'] + '.gate' == g['name']:
-                        self.all_layers[name]['g_param_idx'] = i
+                if self.optimizer_norm is not None:
+                    for i, g in enumerate(self.optimizer_norm.param_groups):
+                        if val['raw_name'] + '.gate' == g['name']:
+                            self.all_layers[name]['g_param_idx'] = i
 
             logger.info('[[Allocate compute_meta_params]]')
             new_object_name_params = 'compute_meta_params'
             new_object_name_gates = 'compute_meta_gates'
-            for name, val in self.all_layers.items():
-                flag_meta_params = False
-                flag_meta_gates = False
-                for update_name in self.meta_param['meta_compute_layer']:
-                    if 'gate' in update_name:
-                        split_update_name = update_name.split('_')
-                        if len(split_update_name) == 1:  # gates of all bn layers
-                            if 'bn' in name:
-                                flag_meta_gates = True # all bn layers
-                        else:
-                            flag_splits = np.zeros(len(split_update_name))
+            if self.meta_param['meta_all_params']: # allocate all params
+                for name, val in self.all_layers.items():
+                    if (val['w_param_idx'] is not None) or (val['b_param_idx'] is not None):
+                        exec('self.model.{}.{} = {}'.format(name, new_object_name_params, True))
+                    else:
+                        exec('self.model.{}.{} = {}'.format(name, new_object_name_params, False))
+                    if (val['g_param_idx']):
+                        exec('self.model.{}.{} = {}'.format(name, new_object_name_gates, True))
+                    else:
+                        exec('self.model.{}.{} = {}'.format(name, new_object_name_gates, False))
+
+            else:
+                for name, val in self.all_layers.items():
+                    flag_meta_params = False
+                    flag_meta_gates = False
+                    for update_name in self.meta_param['meta_compute_layer']:
+                        if 'gate' in update_name: # about gate parameters
+                            split_update_name = update_name.split('_')
+                            if len(split_update_name) == 1:  # gates of all bn layers
+                                if 'bn' in name:
+                                    flag_meta_gates = True # all bn layers
+                            else:
+                                flag_splits = np.zeros(len(split_update_name))
+                                for i, splits in enumerate(split_update_name):
+                                    if splits in name:
+                                        flag_splits[i] = 1
+                                if sum(flag_splits) >= len(split_update_name) - 1:
+                                    flag_meta_gates = True
+                            if flag_meta_gates:
+                                break
+                    for update_name in self.meta_param['meta_compute_layer']:
+                        if 'gate' not in update_name: # about remaining parameters
+                            split_update_name = update_name.split('_')
+                            flag_splits = np.zeros(len(split_update_name), dtype=bool)
                             for i, splits in enumerate(split_update_name):
                                 if splits in name:
-                                    flag_splits[i] = 1
-                            if sum(flag_splits) >= len(split_update_name) - 1:
-                                flag_meta_gates = True
-                        if flag_meta_gates:
-                            break
-                for update_name in self.meta_param['meta_compute_layer']:
-                    if 'gate' not in update_name:
-                        split_update_name = update_name.split('_')
-                        flag_splits = np.zeros(len(split_update_name), dtype=bool)
-                        for i, splits in enumerate(split_update_name):
-                            if splits in name:
-                                flag_splits[i] = True
-                        flag_meta_params = all(flag_splits)
-                        if flag_meta_params:
-                            break
-                if flag_meta_params:
-                    logger.info('{} is in the {}'.format(update_name, name))
-                    exec('self.model.{}.{} = {}'.format(name, new_object_name_params, True))
-                else:
-                    exec('self.model.{}.{} = {}'.format(name, new_object_name_params, False))
+                                    flag_splits[i] = True
+                            flag_meta_params = all(flag_splits)
+                            if flag_meta_params:
+                                break
+                    if flag_meta_params: # allocate flag_meta_params in each parameter
+                        logger.info('{} is in the {}'.format(update_name, name))
+                        exec('self.model.{}.{} = {}'.format(name, new_object_name_params, True))
+                    else:
+                        exec('self.model.{}.{} = {}'.format(name, new_object_name_params, False))
 
-                if flag_meta_gates:
-                    logger.info('{} is in the {}'.format(update_name, name))
-                    exec('self.model.{}.{} = {}'.format(name, new_object_name_gates, True))
-                else:
-                    exec('self.model.{}.{} = {}'.format(name, new_object_name_gates, False))
+                    if flag_meta_gates: # allocate flag_meta_gates in each parameter
+                        logger.info('{} is in the {}'.format(update_name, name))
+                        exec('self.model.{}.{} = {}'.format(name, new_object_name_gates, True))
+                    else:
+                        exec('self.model.{}.{} = {}'.format(name, new_object_name_gates, False))
 
-            logger.info('[[Exceptions 1]]')
+            logger.info('[[Exceptions 1]]') # exceptions for resnet50
             name = 'backbone.conv1'; update_name = 'layer0_conv'
             if update_name in self.meta_param['meta_compute_layer']:
                 logger.info('{} is in the {}'.format(update_name, name))
@@ -356,6 +369,8 @@ class SimpleTrainer(TrainerBase):
     def run_step(self):
         # initial setting
         # self.optimizer.zero_grad()
+
+        start = time.perf_counter()
         assert self.model.training, "[SimpleTrainer] model was changed to eval mode!"
         metrics_dict = dict()
 
@@ -395,6 +410,7 @@ class SimpleTrainer(TrainerBase):
                 self.storage.put_scalars(**all_gate_dict, smoothing_hint=False)
                 # print(time.perf_counter() - start)
 
+        # print(time.perf_counter() - start)
         # if self.iter % (self.cfg.SOLVER.WRITE_PERIOD_PARAM * self.cfg.SOLVER.WRITE_PERIOD) == 0:
         #     self.logger_parameter_info(self.model)
     def run_step_meta_learning1(self):
@@ -432,7 +448,9 @@ class SimpleTrainer(TrainerBase):
             #     self.optimizer_main.zero_grad()
             # if self.meta_param['flag_manual_memory_empty']:
             # torch.cuda.empty_cache()
-            if self.iter == 0: self.optimizer_norm.zero_grad()
+            if self.iter == 0:
+                if self.optimizer_norm is not None:
+                    self.optimizer_norm.zero_grad()
             if self.meta_param['sync']: torch.cuda.synchronize()
 
         for name in self.metrics_dict.keys():
@@ -442,6 +460,7 @@ class SimpleTrainer(TrainerBase):
 
     def run_step_meta_learning2(self):
 
+        start = time.perf_counter()
         # Meta-learning
         cnt_global = 0
         if self.meta_param['main_zero_grad']: self.optimizer_main.zero_grad()
@@ -519,6 +538,8 @@ class SimpleTrainer(TrainerBase):
                 total_losses = mtest_losses
             total_losses /= float(self.meta_param['iter_mtrain'])
 
+            if self.meta_param['meta_all_params']:
+                self.basic_backward(total_losses, self.optimizer_main, retain_graph = True) #
             self.basic_backward(total_losses, self.optimizer_norm) # backward
 
             # if self.meta_param['flag_manual_zero_grad'] != 'hold':
@@ -532,7 +553,9 @@ class SimpleTrainer(TrainerBase):
             self.print_selected_optimizer('2) after meta-learning', self.idx_group_norm, self.optimizer_norm, self.meta_param['detail_mode'])
 
             self.optimizer_main.zero_grad()
-            self.optimizer_norm.zero_grad()
+            if self.optimizer_norm is not None:
+                self.optimizer_norm.zero_grad()
+
 
         self.metrics_dict["data_time"] = self.data_time_all
         self._write_metrics(self.metrics_dict)
@@ -556,7 +579,7 @@ class SimpleTrainer(TrainerBase):
                 # print(time.perf_counter() - start)
 
 
-        # print("Data loading time: {}".format(self.data_time_all))
+        # print("Processing time: {}".format(time.perf_counter() - start))
 
         # self.logger_parameter_info(self.model)
     def get_data(self, data_loader_iter, list_sample = None, opt = None):
@@ -711,7 +734,7 @@ class SimpleTrainer(TrainerBase):
             else:
                 meta_ratio = self.meta_param['update_ratio']
 
-            for name, val in self.all_layers.items():
+            for name, val in self.all_layers.items(): # compute stepsize
                 if self.all_layers[name]['w_param_idx'] is not None:
                     self.all_layers[name]['w_step_size'] = \
                         self.optimizer_main.param_groups[self.all_layers[name]['w_param_idx']]["lr"]\
@@ -733,7 +756,7 @@ class SimpleTrainer(TrainerBase):
                 else:
                     self.all_layers[name]['g_step_size'] = None
 
-            for name, val in self.all_layers.items():
+            for name, val in self.all_layers.items(): # allocate stepsize
                 if val['compute_meta_params']:
                     exec('self.model.{}.{} = {}'.format(name, 'w_step_size', val['w_step_size']))
                     exec('self.model.{}.{} = {}'.format(name, 'b_step_size', val['b_step_size']))
@@ -743,30 +766,56 @@ class SimpleTrainer(TrainerBase):
             opt['auto_grad_outside'] = self.meta_param['auto_grad_outside']
 
             # inner
-            if opt['auto_grad_outside']:
+            if opt['auto_grad_outside']: # compute gradient using meta-train loss
                 # outer
                 names_weights_copy = dict()
                 if self.meta_param['momentum_init_grad'] > 0.0:
                     names_grads_copy = list()
                 for name, param in self.model.named_parameters():
-                    for compute_name in list(self.meta_param['meta_compute_layer']):
-                        split_compute_name = compute_name.split('_')
-                        if 'gate' in name:
-                            if 'gate' not in split_compute_name:
-                                continue
-                        else:  # 'weight' / 'bais
-                            if 'gate' in split_compute_name:
-                                continue
-                        flag_splits = np.zeros(len(split_compute_name), dtype=bool)
-                        for i, splits in enumerate(split_compute_name):
-                            if splits in name:
-                                flag_splits[i] = True
-                        flag_target = all(flag_splits)
-                        if flag_target:
+                    if self.meta_param['meta_all_params']:
+                        if param.requires_grad:
                             names_weights_copy['self.model.' + name] = param
                             if self.meta_param['momentum_init_grad'] > 0.0:
                                 names_grads_copy.append(copy.deepcopy(param.grad.data))
-                if self.meta_param['norm_zero_grad']: self.optimizer_norm.zero_grad()
+                        else:
+                            if self.iter == 0:
+                                logger.info("[{}] This parameter does have requires_grad".format(name))
+
+
+                    else:
+                        for compute_name in list(self.meta_param['meta_compute_layer']):
+                            split_compute_name = compute_name.split('_')
+                            if 'gate' in name:
+                                if 'gate' not in split_compute_name:
+                                    continue
+                            else:  # 'weight' / 'bais
+                                if 'gate' in split_compute_name:
+                                    continue
+                            flag_splits = np.zeros(len(split_compute_name), dtype=bool)
+                            for i, splits in enumerate(split_compute_name):
+                                if splits in name:
+                                    flag_splits[i] = True
+                            flag_target = all(flag_splits)
+                            if flag_target:
+                                if param.requires_grad:
+                                    names_weights_copy['self.model.' + name] = param
+                                    if self.meta_param['momentum_init_grad'] > 0.0:
+                                        names_grads_copy.append(copy.deepcopy(param.grad.data))
+                                else:
+                                    if self.iter == 0:
+                                        logger.info("[{}] This parameter does have requires_grad".format(name))
+
+                if self.meta_param['norm_zero_grad'] and self.optimizer_norm is not None:
+                    self.optimizer_norm.zero_grad()
+                # for name, val in names_weights_copy.items():
+                #     print(name)
+                # for name, val in self.model.named_parameters():
+                #     print(name)
+                # for name, val in self.model.named_parameters():
+                #     print(val.data.shape)
+                # for x in grad_params:
+                #     print(x.shape)
+
                 if self.scaler is not None:
                     grad_params = torch.autograd.grad(
                         self.scaler.scale(losses), names_weights_copy.values(),
@@ -888,7 +937,11 @@ class SimpleTrainer(TrainerBase):
         idx_group = list(set(idx_group))
         return idx_group, dict_group
     def print_selected_optimizer(self, txt, idx_group, optimizer, detail_mode):
-        if detail_mode and (self.iter <= 5 or self.iter % 100 == 0):
+        try:
+            num_period = self.meta_param['write_period_param']
+        except:
+            num_period = 100
+        if detail_mode and (self.iter <= 5 or self.iter % num_period == 0):
             if optimizer is not None:
                 num_float = 8
                 for x in idx_group:

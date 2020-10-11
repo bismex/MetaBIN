@@ -187,6 +187,7 @@ class DefaultTrainer(SimpleTrainer):
 
             meta_param['meta_compute_layer'] = cfg.META.MODEL.META_COMPUTE_LAYER
             meta_param['meta_update_layer'] = cfg.META.MODEL.META_UPDATE_LAYER
+            meta_param['meta_all_params'] = cfg.META.MODEL.ALL_PARAMS
 
             meta_param['iter_init_inner'] = cfg.META.SOLVER.INIT.INNER_LOOP
             meta_param['iter_init_inner_first'] = cfg.META.SOLVER.INIT.FIRST_INNER_LOOP
@@ -234,7 +235,7 @@ class DefaultTrainer(SimpleTrainer):
 
 
 
-
+            meta_param['write_period_param'] = cfg.SOLVER.WRITE_PERIOD_PARAM
 
 
             meta_param['loss_combined'] = cfg.META.LOSS.COMBINED
@@ -324,15 +325,25 @@ class DefaultTrainer(SimpleTrainer):
         else:
             self.scheduler_norm = None
 
-        self.checkpointer = Checkpointer(
-            model,
-            cfg.OUTPUT_DIR,
-            save_to_disk=comm.is_main_process(),
-            optimizer_main=optimizer_main,
-            scheduler_main=self.scheduler_main,
-            optimizer_norm=optimizer_norm,
-            scheduler_norm=self.scheduler_norm,
-        )
+        if optimizer_norm is None:
+            self.checkpointer = Checkpointer(
+                model,
+                cfg.OUTPUT_DIR,
+                save_to_disk=comm.is_main_process(),
+                optimizer_main=optimizer_main,
+                scheduler_main=self.scheduler_main,
+            )
+
+        else:
+            self.checkpointer = Checkpointer(
+                model,
+                cfg.OUTPUT_DIR,
+                save_to_disk=comm.is_main_process(),
+                optimizer_main=optimizer_main,
+                scheduler_main=self.scheduler_main,
+                optimizer_norm=optimizer_norm,
+                scheduler_norm=self.scheduler_norm,
+            )
 
         self.start_iter = 0
         if cfg.SOLVER.SWA.ENABLED:
@@ -420,6 +431,7 @@ class DefaultTrainer(SimpleTrainer):
         # some checkpoints may have more precise statistics than others.
         if comm.is_main_process():
             ret.append(hooks.PeriodicCheckpointer(self.checkpointer, cfg.SOLVER.CHECKPOINT_PERIOD))
+            # ret.append(hooks.PeriodicCheckpointer(self.checkpointer, 1))
 
         def test_and_save_results():
             if comm.is_main_process():
