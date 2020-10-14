@@ -18,6 +18,7 @@ pip install tabulate
 pip install scikit-learn
 pip install h5py
 pip install imageio
+pip install openpyxl 
 ```
 - Need 10.1 cuda version or higher
 - Need recent GPU drivers

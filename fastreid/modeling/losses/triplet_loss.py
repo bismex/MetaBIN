@@ -42,16 +42,32 @@ def hard_example_mining(dist_mat, is_pos, is_neg):
 
     # `dist_ap` means distance(anchor, positive)
     # both `dist_ap` and `relative_p_inds` with shape [N, 1]
+
     dist_ap, relative_p_inds = torch.max(
         dist_mat[is_pos].contiguous().view(N, -1), 1, keepdim=True)
+    dist_ap = dist_ap.squeeze(1)
+
+
+    # dist_ap = list()
+    # for i in range(dist_mat.shape[0]):
+    #     dist_ap.append(torch.max(dist_mat[i][is_pos[i]]))
+    # dist_ap = torch.stack(dist_ap)
+
     # `dist_an` means distance(anchor, negative)
     # both `dist_an` and `relative_n_inds` with shape [N, 1]
+
+
     dist_an, relative_n_inds = torch.min(
         dist_mat[is_neg].contiguous().view(N, -1), 1, keepdim=True)
+    dist_an = dist_an.squeeze(1)
+
+    # dist_an = list()
+    # for i in range(dist_mat.shape[0]):
+    #     dist_an.append(torch.min(dist_mat[i][is_neg[i]]))
+    # dist_an = torch.stack(dist_an)
+
 
     # shape [N]
-    dist_ap = dist_ap.squeeze(1)
-    dist_an = dist_an.squeeze(1)
 
     return dist_ap, dist_an
 

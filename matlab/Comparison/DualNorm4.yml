@@ -135,7 +135,7 @@ MODEL:
   NORM:
     BN_AFFINE: True # learn w,b (required)
     BN_RUNNING: True # apply running mean, var (required)
-    IN_AFFINE: True # learn w,b (optional)
+    IN_AFFINE: False # learn w,b (optional)
     IN_RUNNING: False # apply running mean, var (optional)
     BIN_INIT: 'one' # 'random', 'one', 'zero', 'half' (optional)
     IN_FC_MULTIPLY: 0.0 # applied when "IN" in fc

@@ -90,8 +90,8 @@ MODEL:
     DEPTH: 14 # ResNet->18,34,50,101,152, Mobilenet->10,14
     WITH_IBN: False  # 'pretrained/resnet50_ibn_a.pth'
     WITH_NL: False
-    PRETRAIN: False
-    PRETRAIN_PATH: '' # 'pretrained/mobilenetv2_1.0.pth' or 'pretrained/mobilenetv2_1.4.pth'
+    PRETRAIN: True
+    PRETRAIN_PATH: 'pretrained/mobilenetv2_1.4.pth' # 'pretrained/mobilenetv2_1.0.pth' or 'pretrained/mobilenetv2_1.4.pth'
     NUM_BATCH_TRACKED: False # default-> False (resnet)
     LAST_STRIDE: 1
   HEADS:

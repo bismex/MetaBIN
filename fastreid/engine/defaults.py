@@ -31,6 +31,7 @@ from fastreid.utils.events import CommonMetricPrinter, JSONWriter, TensorboardXW
 from fastreid.utils.file_io import PathManager
 from fastreid.utils.logger import setup_logger
 import torch.optim as optim
+from torch.autograd import Variable
 from . import hooks
 from .train_loop import SimpleTrainer
 # import logging
@@ -196,8 +197,6 @@ class DefaultTrainer(SimpleTrainer):
             meta_param['update_ratio'] = cfg.META.SOLVER.LR_FACTOR.META
             # meta_param['update_ratio'] = cfg.META.SOLVER.LR_FACTOR.GATE_CYCLIC_RATIO
             # meta_param['update_ratio'] = cfg.META.SOLVER.LR_FACTOR.GATE_CYCLIC_PERIOD_PER_EPOCH
-            meta_param['update_cyclic_ratio'] = cfg.META.SOLVER.LR_FACTOR.META_CYCLIC_RATIO
-            meta_param['update_cyclic_period'] = cfg.META.SOLVER.LR_FACTOR.META_CYCLIC_PERIOD_PER_EPOCH
             meta_param['iters_per_epoch'] = cfg.SOLVER.ITERS_PER_EPOCH
 
 
@@ -232,9 +231,6 @@ class DefaultTrainer(SimpleTrainer):
             meta_param['norm_zero_grad'] = cfg.META.NEW_SOLVER.NORM_ZERO_GRAD
             meta_param['momentum_init_grad'] = cfg.META.NEW_SOLVER.MOMENTUM_INIT_GRAD
 
-
-
-
             meta_param['write_period_param'] = cfg.SOLVER.WRITE_PERIOD_PARAM
 
 
@@ -249,6 +245,35 @@ class DefaultTrainer(SimpleTrainer):
             for name, val in meta_param.items():
                 logger.info('[M_param] {}: {}'.format(name, val))
             logger.info('-' * 30)
+
+            meta_param['update_cyclic_ratio'] = cfg.META.SOLVER.LR_FACTOR.META_CYCLIC_RATIO
+            meta_param['update_cyclic_period'] = cfg.META.SOLVER.LR_FACTOR.META_CYCLIC_PERIOD_PER_EPOCH
+            meta_param['update_cyclic_new'] = cfg.META.SOLVER.LR_FACTOR.META_CYCLIC_NEW
+
+            if meta_param['update_ratio'] == 0.0:
+                if meta_param['update_cyclic_new']:
+                    meta_param['update_cyclic_up_ratio'] = cfg.META.SOLVER.LR_FACTOR.META_CYCLIC_UP_RATIO
+                    meta_param['update_cyclic_middle_lr'] = cfg.META.SOLVER.LR_FACTOR.META_CYCLIC_MIDDLE_LR
+
+                    one_period = int(meta_param['iters_per_epoch'] / meta_param['update_cyclic_period'])
+                    num_step_up = int(one_period * meta_param['update_cyclic_up_ratio'])
+                    num_step_down = one_period - num_step_up
+                    if num_step_up <= 0:
+                        num_step_up = 1
+                        num_step_down = one_period - 1
+                    if num_step_down <= 0:
+                        num_step_up = one_period - 1
+                        num_step_down = 1
+
+                    self.cyclic_optimizer = optim.SGD([Variable(torch.zeros(1), requires_grad=False)], lr=0.1)
+                    self.cyclic_scheduler = torch.optim.lr_scheduler.CyclicLR(
+                        optimizer=self.cyclic_optimizer,
+                        base_lr= meta_param['update_cyclic_middle_lr'] / meta_param['update_cyclic_ratio'],
+                        max_lr= meta_param['update_cyclic_middle_lr'] * meta_param['update_cyclic_ratio'],
+                        step_size_up = num_step_up,
+                        step_size_down = num_step_down,
+                    )
+
 
 
         if comm.get_world_size() > 1:

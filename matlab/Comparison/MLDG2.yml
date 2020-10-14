@@ -172,7 +172,7 @@ DATALOADER:
   INDIVIDUAL: False
 
 SOLVER:
-  AMP: True
+  AMP: False
   OPT: "SGD" # SGD
   OPT_NORM: "SGD" # SGD
   MOMENTUM: 0.9

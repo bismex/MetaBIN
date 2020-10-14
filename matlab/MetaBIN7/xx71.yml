@@ -1,0 +1,218 @@
+
+INPUT:
+  SIZE_TRAIN: [256, 128] # vehicle: [256,256]
+  SIZE_TEST: [256, 128] # vehicle: [256,256]
+  DO_AUTOAUG: False
+  CJ:
+    ENABLED: False
+  DO_AUGMIX: False
+  RPT:
+    ENABLED: False
+  REA:
+    ENABLED: False
+
+META:
+  BOTTLENECK:
+    DO_IT: False # bottleneck layer
+    REDUCTION_DIM: 1024 
+    NORM: True # norm after bottleneck layer
+
+  DATA:
+    NAMES: "DG" # 'VeRi_keypoint_each_4', 'DG'
+    LOADER_FLAG: 'diff' # "each"(3), "diff"(2), "same"(1)
+
+    # enable when LOADER_FLAG is 'each' or 'diff'
+    NAIVE_WAY: False # True-> random, False-> same domain
+    DELETE_REM: False # True-> fill in samples as a multiply of num_instance when the num of samples is more than num_instance (automatically fill in samples when less than num_instance)
+    INDIVIDUAL: False # True-> split dataloader (high memory requirements)
+    DROP_LAST: True
+    WHOLE: True
+
+    MTRAIN_MINI_BATCH: 80 # should be a multiply of num_domain x num_instance
+    MTRAIN_NUM_INSTANCE: 4
+    MTEST_MINI_BATCH: 80 # should be a multiply of num_domain x num_instance
+    MTEST_NUM_INSTANCE: 4
+
+  MODEL:
+    META_COMPUTE_LAYER: ('backbone_bn_gate', )
+    META_UPDATE_LAYER: ('backbone_bn_gate',)
+
+  SOLVER:
+    LR_FACTOR:
+      GATE: 10.0 # bigger -> fast update, if 0 -> cyclic
+      META: 0.0 # bigger -> meta_train ratio, if 0 -> cyclic
+      META_CYCLIC_RATIO: 10.0
+      META_CYCLIC_PERIOD_PER_EPOCH: 1.0
+      META_CYCLIC_UP_RATIO: 0.5 # 1 means only up, 0 means only down
+      META_CYCLIC_MIDDLE_LR: 0.01
+      META_CYCLIC_NEW: True
+
+    INIT:
+      FIRST_INNER_LOOP: 10 # basic init training depends on total iteration (num of backward)
+      INNER_LOOP: 1 # basic init training depends on total iteration (num of backward)
+      OUTER_LOOP: 1 # meta-training (num of backward) [Shuffled]
+      TYPE_RUNNING_STATS: "general" # "general", "hold", "eval"
+      # general-> w,b is trained, running_stats are updated
+      # hold-> w,b is trained, running_stats are stopped
+      # eval-> w,b is not trained, running_stats are applied
+
+    MTRAIN:
+      INNER_LOOP: 1 # Accumulate losses [Select Shuffle]
+      SHUFFLE_DOMAIN: True # True->shuffle domain when outerloop
+      SECOND_ORDER: True # [True fix!] second order
+      NUM_DOMAIN: 3
+      TYPE_RUNNING_STATS: "general" # "general", "hold", "eval"
+
+    MTEST:
+      ONLY_ONE_DOMAIN: False # True-> only use one domain in meta-test
+      TYPE_RUNNING_STATS: "general" # "general", "hold", "eval"
+
+    SYNC: True # [True]
+    DETAIL_MODE: True # True-> print detail info
+    STOP_GRADIENT: True # [False->slow..]
+    INNER_CLAMP: True # [True->slow, but low memory]
+
+  NEW_SOLVER:
+    MAIN_ZERO_GRAD: True # True
+    NORM_ZERO_GRAD: True
+    MOMENTUM_INIT_GRAD: 0.0 # if more than 0.5, stop_gradient
+
+  LOSS:
+    COMBINED: False # True-> Mtotal = Mtrain + Mtest
+    WEIGHT: 1.0 # w * MTRAIN + MTEST (when combined)
+    MTRAIN_NAME: ("TripletLoss_mtrain",) # "CrossEntropyLoss", "TripletLoss_mtrain", "MMD", "JSD", "STD", "GRL"
+    MTEST_NAME: ("TripletLoss_mtest",) # "CrossEntropyLoss", "TripletLoss_mtest"
+
+
+MODEL:
+  META_ARCHITECTURE: "Metalearning"
+  BACKBONE:
+    NAME: "build_mobilenet_v2_backbone" # "build_resnet_backbone", "build_mobilenet_v2_backbone"
+    DEPTH: 14 # ResNet->18,34,50,101,152, Mobilenet->10,14
+    WITH_IBN: False  # 'pretrained/resnet50_ibn_a.pth'
+    WITH_NL: False
+    PRETRAIN: True
+    PRETRAIN_PATH: 'pretrained/mobilenetv2_1.4.pth' # 'pretrained/mobilenetv2_1.0.pth' or 'pretrained/mobilenetv2_1.4.pth'
+    NUM_BATCH_TRACKED: False # default-> False (resnet)
+    LAST_STRIDE: 1
+  HEADS:
+    IN_FEAT: 1792 # ResNet 2048, Mobilenet w1.0 1280, w1.4 1792
+    NAME: "MetalearningHead"
+    POOL_LAYER: "avgpool" # 'fastavgpool', 'avgpool', 'maxpool', 'gempoolP', 'gempool', 'avgmaxpool', 'clipavgpool', 'identity'
+    CLS_LAYER: "linear" # 'linear', 'arcSoftmax(x)', 'circleSoftmax', 'amSoftmax(poor)'
+  LOSSES:
+    CE:
+      EPSILON: 0.1 # 0, 0.1
+    TRI:
+      HARD_MINING: True
+      MARGIN: 0.3
+      FEAT_ORDER: 'before'
+    TRI_ADD:
+      SCALE: 0.1
+      HARD_MINING: True
+      MARGIN: 0.3
+      NORM_FEAT: False
+      NEW_POS: [ 0,0,1 ]
+      NEW_NEG: [ 0,1,0 ]
+      FEAT_ORDER: 'before'
+    TRI_MTRAIN:
+      HARD_MINING: True
+      MARGIN: 0.3
+      NORM_FEAT: False
+      NEW_POS: [ 1,0,0 ]
+      NEW_NEG: [ 0,1,1 ]
+      FEAT_ORDER: 'before'
+    TRI_MTEST:
+      HARD_MINING: True
+      MARGIN: 0.3
+      NORM_FEAT: False
+      NEW_POS: [ 1,0,0 ]
+      NEW_NEG: [ 0,1,1 ]
+      FEAT_ORDER: 'before'
+    MMD:
+      SCALE: 1.0
+      NORM: False
+      FEAT_ORDER: 'before'
+    JSD:
+      SCALE: 1.0
+      FEAT_ORDER: 'before'
+    STD:
+      SCALE: 1.0
+      FEAT_ORDER: 'before'
+      TYPE: 'domain' # 'all', 'all_channel', 'domain', 'domain_channel'
+    SCT:
+      SCALE: 1.0
+      NORM: True
+      FEAT_ORDER: 'before'
+      TYPE: 'cosine_sim' # 'cosine', 'euclidean'
+    NAME: ("CrossEntropyLoss","TripletLoss",) # "CrossEntropyLoss", "TripletLoss","CircleLoss"
+  NORM:
+    BN_AFFINE: True # learn w,b (required)
+    BN_RUNNING: True # apply running mean, var (required)
+    IN_AFFINE: True # learn w,b (optional)
+    IN_RUNNING: False # apply running mean, var (optional)
+    BIN_INIT: 'one' # 'random', 'one', 'zero', 'half' (optional)
+    IN_FC_MULTIPLY: 0.0 # applied when "IN" in fc
+
+    LOAD_BN_AFFINE: True # (optional)
+    LOAD_BN_RUNNING: True # change to False when TYPE_BACKBONE = "IN" & IN_RUNNING = False (optional)
+    LOAD_IN_AFFINE: False
+    LOAD_IN_RUNNING: False
+
+    BN_W_FREEZE: False
+    BN_B_FREEZE: False
+    IN_W_FREEZE: False
+    IN_B_FREEZE: False
+
+    TYPE_BACKBONE: "BIN_gate2"
+    TYPE_BOTTLENECK: "BN" # "BN", "BIN_half", "BIN_gate1" (original), "BIN_gate2" [IN_FC_MULTIPLY]
+    TYPE_CLASSIFIER: "BN" #
+
+DATASETS:
+  NAMES: ("DG_CUHK02", "DG_CUHK03_detected", "DG_Market1501", "DG_DukeMTMC", "DG_CUHK_SYSU",)
+  # "DG_CUHK02", "DG_CUHK03_detected", "DG_Market1501", "DG_DukeMTMC", "DG_CUHK_SYSU", "DG_CUHK03_labeled"
+  TESTS: ("ALL_GRID", "ALL_VIPER_only_10", "ALL_PRID", "ALL_iLIDS", ) # DG_VIPeR, Market1501, ALL_VIPER_only_5, ALL_VIPER_5, ALL_PRID, PRID, GRID
+#  TESTS: ("GRID",) # DG_VIPeR, Market1501, ALL_VIPER_only_5, ALL_VIPER_5, ALL_PRID, PRID, GRID
+#  TESTS: ("GRID",) # DG_VIPeR, Market1501, ALL_VIPER_only_5, ALL_VIPER_5, ALL_PRID, PRID, GRID
+#  TESTS: ("ALL_iLIDS",) # DG_VIPeR, Market1501, ALL_VIPER_only_5, ALL_VIPER_5, ALL_PRID, PRID, GRID
+
+
+DATALOADER:
+  NUM_INSTANCE: 4
+  NUM_WORKERS: 2
+  NAIVE_WAY: True # True-> random, False-> same domain
+  DELETE_REM: False # when false -> more images
+  INDIVIDUAL: False
+
+SOLVER:
+  AMP: True
+  OPT: "SGD" # SGD
+  OPT_NORM: "SGD" # SGD
+  MOMENTUM: 0.9
+  MOMENTUM_NORM: 0.0 # 0.0
+
+  CYCLIC_PERIOD_PER_EPOCH: 1.0
+  CYCLIC_MIN_LR: 0.0001
+  CYCLIC_MAX_LR: 0.01
+  NORM_SCHEDULER: 'equal' # 'same', 'no_warm', 'equal', 'cyclic'
+  BASE_LR: 0.01 # 0.01
+  ETA_MIN_LR: 7.7e-5
+
+  MAX_ITER: 70 # vehicle: 100
+  STEPS: [30, 50] # vehicle: [40, 70]
+
+  WARMUP_FACTOR: 0.01
+  WARMUP_ITERS: 10
+
+  CHECKPOINT_PERIOD: 5
+  IMS_PER_BATCH: 80 # per each domain -> 80 : 5000MiB
+  WEIGHT_DECAY: 0.0005
+  WEIGHT_DECAY_BIAS: 0.0005
+  WEIGHT_DECAY_NORM: 0.0 # 0.0
+  WRITE_PERIOD: 100
+  WRITE_PERIOD_BIN: 100
+
+TEST:
+  EVAL_PERIOD: 5
+  IMS_PER_BATCH: 128
+  REPORT_ALL: False

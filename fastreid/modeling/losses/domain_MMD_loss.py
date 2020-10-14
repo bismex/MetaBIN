@@ -41,7 +41,7 @@ def domain_MMD_loss(embedding, domain_labels, norm_feat, norm_flag, kernel_mul, 
         else:
             dist = ((total0 - total1) ** 2).sum(2)
 
-        if fix_sigma:
+        if fix_sigma > 0:
             bandwidth = fix_sigma
         else:
             bandwidth = torch.sum(dist.data) / (num_total ** 2 - num_total)

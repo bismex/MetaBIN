@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+from openpyxl import Workbook
 
 
 def dict_to_figure(num_sampling, make_dict, plt_title, save_path):
@@ -53,15 +54,18 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--folder_dir', default='../logs')
     parser.add_argument('--folder_name', default='Sample')
-    parser.add_argument('--start_name', default='dualnorm7')
-    parser.add_argument('--end_name', default='dualnorm8')
+    parser.add_argument('--start_name', default='u01')
+    parser.add_argument('--end_name', default='u01')
     parser.add_argument('--except_number', default='99')
     parser.add_argument('--max_only', default='0')
-    parser.add_argument('--name_length', default='8')
+    parser.add_argument('--name_length', default='1')
     parser.add_argument('--print_none', default='1')
     parser.add_argument('--zfill', default='2')
 
-    parser.add_argument('--bin_stat', default='1')
+    parser.add_argument('--bin_stat', default='0')
+    parser.add_argument('--bin_hist', default='0')
+    parser.add_argument('--bin_last_hist', default='1')
+    parser.add_argument('--bin_last_xlsx', default='1')
     parser.add_argument('--num_sampling', default='10')
     parser.add_argument('--dpi', default='300')
 
@@ -72,6 +76,9 @@ if __name__ == "__main__":
     end_name = args.end_name
     max_only = args.max_only
     bin_stat = int(args.bin_stat)
+    bin_hist = int(args.bin_hist)
+    bin_last_hist = int(args.bin_last_hist)
+    bin_last_xlsx = int(args.bin_last_xlsx)
     dpi = int(args.dpi)
     num_sampling = int(args.num_sampling)
     except_number = args.except_number
@@ -107,8 +114,100 @@ if __name__ == "__main__":
         file_name = os.path.join(folder_dir, folder_name, case, 'metrics.json')
         # print(case)
         if os.path.isfile(file_name) and i not in except_number:
-            file = open(file_name, "r", encoding='utf-8')
 
+            file = open(file_name, "r", encoding='utf-8')
+            if bin_hist == 1 or bin_last_hist == 1:
+
+                # for bin_gate parameters
+                cnt = 0
+                for obj in decode_stacked(file.read()):
+
+                    if cnt == 0:
+                        all_name = []
+                        for name, param in obj.items():
+                            if 'b4' in name:
+                                name = name.replace('b4', 'b')
+                            if '_g_mean' in name:
+                                all_name.append(name.replace('_g_mean', ''))
+                        all_hist = dict()
+                        for j in range(len(all_name)):
+                            all_hist[all_name[j]] = dict()
+                            for k in range(20):
+                                all_hist[all_name[j]][str(k)] = []
+
+
+                    local_hist = dict()
+                    for j in range(len(all_name)):
+                        local_hist[all_name[j]] = np.zeros(20)
+
+                    # local_hist = np.zeros(20)
+                    for name, val in obj.items():
+                        if 'b4' in name:
+                            name = name.replace('b4', 'b')
+                        if '_g_hist' in name:
+                            hist_target = name[:name.find('_g_hist')]
+                            hist_number = int(name[name.find('_g_hist')+7:])
+                            local_hist[hist_target][hist_number] = val
+
+                    for name, val in local_hist.items():
+                        local_hist[name] /= np.sum(local_hist[name])
+                        for k in range(20):
+                            all_hist[name][str(k)].append(local_hist[name][k])
+
+                    cnt += 1
+
+                if bin_last_hist == 1 or bin_last_xlsx == 1:
+                    final_hist = dict()
+                    for j in range(len(all_name)):
+                        final_hist[all_name[j]] = np.zeros(20)
+                    for name, val in all_hist.items():
+                        for k in range(20):
+                            final_hist[name][k] = val[str(k)][-2]
+
+                    if bin_last_hist == 1:
+                        for name, val in all_hist.items():
+                            if not os.path.isdir(os.path.join(bin_folder_path, case + '_hist_final')):
+                                os.mkdir(os.path.join(bin_folder_path, case + '_hist_final'))
+                            save_path = os.path.join(bin_folder_path, case + '_hist_final', name + '.png')
+                            plt.rcParams['figure.figsize'] = [15, 15]
+                            plt.bar(np.arange(20), final_hist[name], color='green', alpha=0.5)
+                            plt.grid()
+                            plt.xlabel('Weight', fontsize=14)
+                            plt.title(name, fontsize=14)
+                            plt.xticks(np.arange(20), [x/20 for x in range(20)], fontsize=14)
+                            plt.yticks(fontsize=14)
+
+                            plt.savefig(save_path, dpi=dpi)
+                            plt.cla()
+                            plt.close()
+
+                    if bin_last_xlsx == 1:
+                        wb = Workbook()
+                        sheet1 = wb.active
+                        sheet1.title = 'bin_parameter'
+                        row_index = [x+1 for x in range(len(final_hist))]
+                        cnt = 0
+                        for name, val in final_hist.items():
+                            sheet1.cell(row=int(row_index[cnt]), column=1).value = name
+                            for k in range(len(val)):
+                                sheet1.cell(row=int(row_index[cnt]), column=k+2).value = val[k]
+                            cnt += 1
+                        wb.save(filename=os.path.join(bin_folder_path, case + '_last_bin.xlsx'))
+
+
+
+
+                if bin_hist == 1:
+                    for name, val in all_hist.items():
+                        if not os.path.isdir(os.path.join(bin_folder_path, case + '_hist')):
+                            os.mkdir(os.path.join(bin_folder_path, case + '_hist'))
+                        save_path = os.path.join(bin_folder_path, case + '_hist', name + '.png')
+                        dict_to_figure(num_sampling, val, 'histogram', save_path)
+
+
+
+
+            file = open(file_name, "r", encoding='utf-8')
             if bin_stat == 1:
                 # for bin_gate parameters
                 bin_dict = dict()
@@ -137,8 +236,13 @@ if __name__ == "__main__":
                 save_path = os.path.join(bin_folder_path, case + '_BIN_std.png')
                 dict_to_figure(num_sampling, bin_std, 'BIN_parameters (std)', save_path)
 
-            file = open(file_name, "r", encoding='utf-8')
 
+
+
+
+
+
+            file = open(file_name, "r", encoding='utf-8')
             # for accuracy
             acc_dict = dict()
             for obj in decode_stacked(file.read()):

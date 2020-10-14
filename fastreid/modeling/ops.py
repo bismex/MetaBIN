@@ -154,23 +154,72 @@ class Meta_bn_norm(nn.BatchNorm2d):
         else:
             updated_weight = self.weight
             updated_bias = self.bias
-        if norm_type == "general": # update, but not apply running_mean/var
-            return F.batch_norm(inputs, self.running_mean, self.running_var,
-                                updated_weight, updated_bias,
-                                self.training, self.momentum, self.eps)
-        elif norm_type == "hold": # not update, not apply running_mean/var
-            return F.batch_norm(inputs, None, None,
-                                updated_weight, updated_bias,
-                                self.training, self.momentum, self.eps)
-        elif norm_type == "eval": # fix and apply running_mean/var,
-            if self.running_mean is None:
-                return F.batch_norm(inputs, None, None,
-                                    updated_weight, updated_bias,
-                                    True, self.momentum, self.eps)
-            else:
-                return F.batch_norm(inputs, self.running_mean, self.running_var,
-                                    updated_weight, updated_bias,
-                                    False, self.momentum, self.eps)
+
+        if opt == None:
+            compute_each_batch = False
+        else:
+            try:
+                if opt['each_domain']:
+                    compute_each_batch = True
+                else:
+                    compute_each_batch = False
+            except: # if opt['each_domain'] does not exist
+                compute_each_batch = False
+        if norm_type == "eval":
+            compute_each_batch = False
+
+        if compute_each_batch:
+            domain_idx = opt['domains']
+            unique_domain_idx = [int(x) for x in torch.unique(domain_idx).cpu()]
+            cnt = 0
+            for j in unique_domain_idx:
+                t_logical_domain = domain_idx == j
+
+                if norm_type == "general":  # update, but not apply running_mean/var
+                    result_local = F.batch_norm(inputs[t_logical_domain], self.running_mean, self.running_var,
+                                          updated_weight, updated_bias,
+                                          self.training, self.momentum, self.eps)
+                elif norm_type == "hold":  # not update, not apply running_mean/var
+                    result_local = F.batch_norm(inputs[t_logical_domain], None, None,
+                                          updated_weight, updated_bias,
+                                          self.training, self.momentum, self.eps)
+                elif norm_type == "eval":  # fix and apply running_mean/var,
+                    if self.running_mean is None:
+                        result_local = F.batch_norm(inputs[t_logical_domain], None, None,
+                                              updated_weight, updated_bias,
+                                              True, self.momentum, self.eps)
+                    else:
+                        result_local = F.batch_norm(inputs[t_logical_domain], self.running_mean, self.running_var,
+                                              updated_weight, updated_bias,
+                                              False, self.momentum, self.eps)
+
+                if cnt == 0:
+                    result = copy.copy(result_local)
+                else:
+                    result = torch.cat((result, result_local), 0)
+                cnt += 1
+
+        else:
+            if norm_type == "general": # update, but not apply running_mean/var
+                result = F.batch_norm(inputs, self.running_mean, self.running_var,
+                                      updated_weight, updated_bias,
+                                      self.training, self.momentum, self.eps)
+            elif norm_type == "hold": # not update, not apply running_mean/var
+                result = F.batch_norm(inputs, None, None,
+                                      updated_weight, updated_bias,
+                                      self.training, self.momentum, self.eps)
+            elif norm_type == "eval": # fix and apply running_mean/var,
+                if self.running_mean is None:
+                    result = F.batch_norm(inputs, None, None,
+                                          updated_weight, updated_bias,
+                                          True, self.momentum, self.eps)
+                else:
+                    result = F.batch_norm(inputs, self.running_mean, self.running_var,
+                                          updated_weight, updated_bias,
+                                          False, self.momentum, self.eps)
+
+
+        return result
 class Meta_in_norm(nn.InstanceNorm2d):
     def __init__(self, num_features, norm_opt = None, eps=1e-05,
                  momentum=0.1, weight_freeze = False, bias_freeze = False,
@@ -431,10 +480,14 @@ def update_parameter(param, step_size, opt = None):
         if not stop_gradient:
             if param is not None:
                 if opt['auto_grad_outside']:
-                    # print("[GRAD]{} [PARAM]{}".format(opt['grad_params'][0].data.shape, param.data.shape))
-                    # outer
-                    updated_param = param - step_size * opt['grad_params'][0]
-                    del opt['grad_params'][0]
+                    if opt['grad_params'][0] == None:
+                        del opt['grad_params'][0]
+                        updated_param = param
+                    else:
+                        # print("[GRAD]{} [PARAM]{}".format(opt['grad_params'][0].data.shape, param.data.shape))
+                        # outer
+                        updated_param = param - step_size * opt['grad_params'][0]
+                        del opt['grad_params'][0]
                 else:
                     # inner
                     grad = autograd.grad(loss, param, create_graph=use_second_order, allow_unused=allow_unused)[0]
@@ -447,10 +500,14 @@ def update_parameter(param, step_size, opt = None):
             if param is not None:
 
                 if opt['auto_grad_outside']:
-                    # print("[GRAD]{} [PARAM]{}".format(opt['grad_params'][0].data.shape, param.data.shape))
-                    # outer
-                    updated_param = param - step_size * opt['grad_params'][0]
-                    del opt['grad_params'][0]
+                    if opt['grad_params'][0] == None:
+                        del opt['grad_params'][0]
+                        updated_param = param
+                    else:
+                        # print("[GRAD]{} [PARAM]{}".format(opt['grad_params'][0].data.shape, param.data.shape))
+                        # outer
+                        updated_param = param - step_size * opt['grad_params'][0]
+                        del opt['grad_params'][0]
                 else:
                     # inner
                     grad = Variable(autograd.grad(loss, param, create_graph=use_second_order, allow_unused=allow_unused)[0].data, requires_grad=False)

@@ -14,7 +14,7 @@ INPUT:
 META:
   BOTTLENECK:
     DO_IT: False # bottleneck layer
-    REDUCTION_DIM: 1024 
+    REDUCTION_DIM: 1024
     NORM: True # norm after bottleneck layer
 
   DATA:
@@ -34,9 +34,8 @@ META:
     MTEST_NUM_INSTANCE: 4
 
   MODEL:
-    META_COMPUTE_LAYER: ('backbone_bn_gate', )
+    META_COMPUTE_LAYER: ('backbone_bn_gate',)
     META_UPDATE_LAYER: ('backbone_bn_gate',)
-    ALL_PARAMS: False
 
   SOLVER:
     LR_FACTOR:
@@ -44,12 +43,15 @@ META:
       META: 0.0 # bigger -> meta_train ratio, if 0 -> cyclic
       META_CYCLIC_RATIO: 10.0
       META_CYCLIC_PERIOD_PER_EPOCH: 2.0
+      META_CYCLIC_UP_RATIO: 0.5 # 1 means only up, 0 means only down
+      META_CYCLIC_MIDDLE_LR: 0.1
+      META_CYCLIC_NEW: True
       # MTrain-stepsize -> B_LR*(Compute param LR)*META_UPDATE (if gate)
       # MTest-stepsize -> B_LR*GATE(Update param LR)
 
     INIT:
       FIRST_INNER_LOOP: 0 # basic init training depends on total iteration (num of backward)
-      INNER_LOOP: 0 # basic init training depends on total iteration (num of backward)
+      INNER_LOOP: 1 # basic init training depends on total iteration (num of backward)
       OUTER_LOOP: 1 # meta-training (num of backward) [Shuffled]
       TYPE_RUNNING_STATS: "general" # "general", "hold", "eval"
       # general-> w,b is trained, running_stats are updated
@@ -80,8 +82,8 @@ META:
   LOSS:
     COMBINED: False # True-> Mtotal = Mtrain + Mtest
     WEIGHT: 1.0 # w * MTRAIN + MTEST (when combined)
-    MTRAIN_NAME: ("CrossEntropyLoss", "TripletLoss_mtrain",) # "CrossEntropyLoss", "TripletLoss_mtrain", "MMD", "JSD", "STD", "GRL"
-    MTEST_NAME: ("CrossEntropyLoss", "TripletLoss_mtest",) # "CrossEntropyLoss", "TripletLoss_mtest"
+    MTRAIN_NAME: ("TripletLoss_mtrain",) # "CrossEntropyLoss", "TripletLoss_mtrain", "MMD", "JSD", "STD", "GRL"
+    MTEST_NAME: ("TripletLoss_mtest",) # "CrossEntropyLoss", "TripletLoss_mtest"
 
 
 MODEL:

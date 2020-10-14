@@ -211,7 +211,7 @@ class SimpleTrainer(TrainerBase):
             self.idx_group = idx_group
             self.idx_group_norm = [0, -1]
             self.dict_group = dict_group
-            self.inner_clamp = True
+            # self.inner_clamp = True
             self.print_flag = False
 
             # allocate whether each layer applies meta_learning (important!)
@@ -253,7 +253,7 @@ class SimpleTrainer(TrainerBase):
                         exec('self.model.{}.{} = {}'.format(name, new_object_name_params, True))
                     else:
                         exec('self.model.{}.{} = {}'.format(name, new_object_name_params, False))
-                    if (val['g_param_idx']):
+                    if (val['g_param_idx'] is not None):
                         exec('self.model.{}.{} = {}'.format(name, new_object_name_gates, True))
                     else:
                         exec('self.model.{}.{} = {}'.format(name, new_object_name_gates, False))
@@ -363,7 +363,7 @@ class SimpleTrainer(TrainerBase):
             idx_group, dict_group = self.find_selected_optimizer(find_group, self.optimizer_main)
             self.idx_group = idx_group
             self.dict_group = dict_group
-            self.inner_clamp = True
+            # self.inner_clamp = True
             self.print_flag = False
 
     def run_step(self):
@@ -382,6 +382,7 @@ class SimpleTrainer(TrainerBase):
 
         # Training (forward & backward)
         opt = self.opt_setting('basic') # option
+        opt['domains'] = data['others']['domains']
         losses, loss_dict = self.basic_forward(data, self.model, opt) # forward
         self.basic_backward(losses, self.optimizer_main, retain_graph = True) # backward
         self.basic_backward(losses, self.optimizer_norm) # backward
@@ -435,7 +436,10 @@ class SimpleTrainer(TrainerBase):
             cnt_init += 1
             data, data_time = self.get_data(self._data_loader_iter, list_sample = None)
             self.data_time_all += data_time
+            opt['domains'] = data['others']['domains']
             losses, loss_dict = self.basic_forward(data, self.model, opt) # forward
+            if self.meta_param['meta_all_params']:
+                self.basic_backward(losses, self.optimizer_norm, retain_graph = True) #
             self.basic_backward(losses, self.optimizer_main) # backward
             for name, val in loss_dict.items():
                 t = name_loss+name
@@ -454,7 +458,7 @@ class SimpleTrainer(TrainerBase):
             if self.meta_param['sync']: torch.cuda.synchronize()
 
         for name in self.metrics_dict.keys():
-            if name_loss in name: self.metrics_dict[name] /= float(self.meta_param['iter_init_inner'])
+            if name_loss in name: self.metrics_dict[name] /= float(max_init)
         # self.optimizer_main.param_groups[0]['params'][0].data[0] * 10000000
         # self.model.backbone.layer1.conv.weight * 1000000
 
@@ -501,7 +505,9 @@ class SimpleTrainer(TrainerBase):
                     data_mtest, data_time = self.get_data(self._data_loader_iter_mtest, list_sample = list_mtest)
                     self.data_time_all += data_time
 
-                # self.grad_setting('mtrain_both')
+                if self.meta_param['freeze_gradient_meta']:
+                    self.grad_setting('mtrain_both')
+                opt['domains'] = data_mtrain['others']['domains']
                 losses, loss_dict = self.basic_forward(data_mtrain, self.model, opt) # forward
                 mtrain_losses.append(losses)
                 for name, val in loss_dict.items():
@@ -513,6 +519,7 @@ class SimpleTrainer(TrainerBase):
                 # self.grad_setting('mtrain_single') # melt only meta_compute parameters
                 opt = self.opt_setting('mtest', losses) # auto_grad based on requires_grad of model
                 # self.grad_setting('mtrain_both') # melt both meta_compute and meta_update parameters
+                opt['domains'] = data_mtest['others']['domains']
                 losses, loss_dict = self.basic_forward(data_mtest, self.model, opt) # forward
 
                 mtest_losses.append(losses)
@@ -556,7 +563,8 @@ class SimpleTrainer(TrainerBase):
             if self.optimizer_norm is not None:
                 self.optimizer_norm.zero_grad()
 
-
+        if self.meta_param['freeze_gradient_meta']:
+            self.grad_requires_recover(model=self.model, ori_grad=self.initial_requires_grad)
         self.metrics_dict["data_time"] = self.data_time_all
         self._write_metrics(self.metrics_dict)
 
@@ -662,6 +670,7 @@ class SimpleTrainer(TrainerBase):
         else:
             losses = None
             loss_dict = dict()
+        # print(loss_dict)
         return losses, loss_dict
     def basic_backward(self, losses, optimizer, retain_graph = False):
 
@@ -691,11 +700,13 @@ class SimpleTrainer(TrainerBase):
                 opt['type_running_stats'] = self.meta_param['type_running_stats_init']
             except:
                 opt['type_running_stats'] = 'general'
+            opt['each_domain'] = self.cfg.MODEL.NORM.EACH_DOMAIN_BASIC
         elif flag == 'mtrain':
             opt = {}
             opt['param_update'] = False
             opt['loss'] = self.meta_param['loss_name_mtrain']
             opt['type_running_stats'] = self.meta_param['type_running_stats_mtrain']
+            opt['each_domain'] = self.cfg.MODEL.NORM.EACH_DOMAIN_MTRAIN
         elif flag == 'mtest':
             opt = {}
             opt['param_update'] = True
@@ -706,31 +717,32 @@ class SimpleTrainer(TrainerBase):
             # opt['zero_grad'] = self.meta_param['zero_grad']
             opt['type_running_stats'] = self.meta_param['type_running_stats_mtest']
             opt['inner_clamp'] = self.meta_param['inner_clamp']
+            opt['each_domain'] = self.cfg.MODEL.NORM.EACH_DOMAIN_MTEST
 
             # self.meta_param['update_cyclic_ratio']
             # self.meta_param['update_cyclic_period']
             if self.meta_param['update_ratio'] == 0.0:
-                # print('.')
-                # self.meta_param['iters_per_epoch']
-                one_period = self.meta_param['iters_per_epoch'] / self.meta_param['update_cyclic_period']
-                b = math.log10(self.meta_param['update_cyclic_ratio'])
-                a = b / (one_period/4.0*1.0)
-                # for i in range(self.meta_param['iters_per_epoch']):
-                rem_val = self.iter % one_period
-                if  rem_val < (one_period/4.0*1.0): # 1st period
-                    meta_ratio = a * rem_val # y = ax
-                elif  rem_val < (one_period/4.0*2.0): # 2nd period
-                    rem_val -= one_period/4.0*1.0
-                    meta_ratio = b - a * rem_val # y = b - ax
-                elif  rem_val < (one_period/4.0*3.0): # 3rd period
-                    rem_val -= one_period/4.0*2.0
-                    meta_ratio = - a * rem_val # y = - ax
-                else: # 4th period
-                    rem_val -= one_period/4.0*3.0
-                    meta_ratio = - b + a * rem_val # y = -b + ax
-                meta_ratio = pow(10, meta_ratio)
-
-                # print(meta_ratio)
+                if self.meta_param['update_cyclic_new']:
+                    self.cyclic_scheduler.step()
+                    meta_ratio = self.cyclic_optimizer.param_groups[0]['lr']
+                else:
+                    one_period = self.meta_param['iters_per_epoch'] / self.meta_param['update_cyclic_period']
+                    b = math.log10(self.meta_param['update_cyclic_ratio'])
+                    a = b / (one_period/4.0*1.0)
+                    # for i in range(self.meta_param['iters_per_epoch']):
+                    rem_val = self.iter % one_period
+                    if  rem_val < (one_period/4.0*1.0): # 1st period
+                        meta_ratio = a * rem_val # y = ax
+                    elif  rem_val < (one_period/4.0*2.0): # 2nd period
+                        rem_val -= one_period/4.0*1.0
+                        meta_ratio = b - a * rem_val # y = b - ax
+                    elif  rem_val < (one_period/4.0*3.0): # 3rd period
+                        rem_val -= one_period/4.0*2.0
+                        meta_ratio = - a * rem_val # y = - ax
+                    else: # 4th period
+                        rem_val -= one_period/4.0*3.0
+                        meta_ratio = - b + a * rem_val # y = -b + ax
+                    meta_ratio = pow(10, meta_ratio)
             else:
                 meta_ratio = self.meta_param['update_ratio']
 
@@ -815,6 +827,13 @@ class SimpleTrainer(TrainerBase):
                 #     print(val.data.shape)
                 # for x in grad_params:
                 #     print(x.shape)
+                # self.scaler.scale(losses).backward(retain_graph = retain_graph)
+
+
+                if self.scaler is not None:
+                    if self.cfg.META.SOLVER.EARLY_SCALE:
+                        inv_scale = 1. / self.scaler.get_scale()
+                        losses *= inv_scale
 
                 if self.scaler is not None:
                     grad_params = torch.autograd.grad(
@@ -831,24 +850,36 @@ class SimpleTrainer(TrainerBase):
 
                 # for i in range(len(grad_params)):
                 #     grad_params[i][torch.isnan(grad_params[i])] = 1.0
+
                 if opt['stop_gradient']:
                     grad_params = list(grad_params)
                     for i in range(len(grad_params)):
-                        grad_params[i] = Variable(grad_params[i].data, requires_grad=False)
+                        if grad_params[i] is not None:
+                            grad_params[i] = Variable(grad_params[i].data, requires_grad=False)
+                        else:
+                            if self.iter == 0:
+                                logger.info("[{}th grad] This parameter does have gradient".format(i))
                     grad_params = tuple(grad_params)
 
                 if self.meta_param['momentum_init_grad'] > 0.0:
                     grad_params = list(grad_params)
                     for i in range(len(grad_params)):
-                        grad_params[i] = self.meta_param['momentum_init_grad'] * names_grads_copy[i].data + \
-                                         (1 - self.meta_param['momentum_init_grad']) * grad_params[i].data
+                        if grad_params[i] is not None:
+                            grad_params[i] = self.meta_param['momentum_init_grad'] * names_grads_copy[i].data + \
+                                             (1 - self.meta_param['momentum_init_grad']) * grad_params[i].data
+                        else:
+                            if self.iter == 0:
+                                logger.info("[{}th grad] This parameter does have gradient".format(i))
                     grad_params = tuple(grad_params)
 
                 if self.scaler is not None:
-                    inv_scale = 1. / self.scaler.get_scale()
-                    opt['grad_params'] = [p * inv_scale for p in grad_params]
+                    if not self.cfg.META.SOLVER.EARLY_SCALE:
+                        inv_scale = 1. / self.scaler.get_scale()
+                        opt['grad_params'] = [p * inv_scale if p != None else None for p in grad_params ]
+                    else:
+                        opt['grad_params'] = [p if p != None else None for p in grad_params ]
                 else:
-                    opt['grad_params'] = [p for p in grad_params]
+                    opt['grad_params'] = [p if p != None else None for p in grad_params ]
                 opt['meta_loss'] = None
             else:
                 opt['meta_loss'] = losses
@@ -882,28 +913,22 @@ class SimpleTrainer(TrainerBase):
                 reverse_flag = False, # True: freeze target / False: freeze w/o target
                 print_flag = self.print_flag)
         elif flag == 'mtrain_both':
-            if self.meta_param['freeze_gradient_meta']:
-                self.grad_requires_remove(
-                    model = self.model,
-                    ori_grad = self.initial_requires_grad,
-                    freeze_target = self.cat_tuples(self.meta_param['meta_update_layer'], self.meta_param['meta_compute_layer']),
-                    # freeze_target = self.meta_param['meta_compute_layer'],
-                    reverse_flag = True, # True: freeze target / False: freeze w/o target
-                    print_flag = self.print_flag)
-            else:
-                self.grad_requires_recover(model=self.model, ori_grad=self.initial_requires_grad)
+            self.grad_requires_remove(
+                model = self.model,
+                ori_grad = self.initial_requires_grad,
+                freeze_target = self.cat_tuples(self.meta_param['meta_update_layer'], self.meta_param['meta_compute_layer']),
+                # freeze_target = self.meta_param['meta_compute_layer'],
+                reverse_flag = True, # True: freeze target / False: freeze w/o target
+                print_flag = self.print_flag)
 
         elif flag == 'mtrain_single':
-            if self.meta_param['freeze_gradient_meta']:
-                self.grad_requires_remove(
-                    model = self.model,
-                    ori_grad = self.initial_requires_grad,
-                    # freeze_target = self.cat_tuples(self.meta_param['meta_update_layer'], self.meta_param['meta_compute_layer']),
-                    freeze_target = self.meta_param['meta_compute_layer'],
-                    reverse_flag = True, # True: freeze target / False: freeze w/o target
-                    print_flag = self.print_flag)
-            else:
-                self.grad_requires_recover(model=self.model, ori_grad=self.initial_requires_grad)
+            self.grad_requires_remove(
+                model = self.model,
+                ori_grad = self.initial_requires_grad,
+                # freeze_target = self.cat_tuples(self.meta_param['meta_update_layer'], self.meta_param['meta_compute_layer']),
+                freeze_target = self.meta_param['meta_compute_layer'],
+                reverse_flag = True, # True: freeze target / False: freeze w/o target
+                print_flag = self.print_flag)
 
         elif flag == 'mtest':
             self.grad_requires_remove(

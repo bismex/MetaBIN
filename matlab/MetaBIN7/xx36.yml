@@ -62,6 +62,7 @@ META:
       SECOND_ORDER: True # [True fix!] second order
       NUM_DOMAIN: 3
       TYPE_RUNNING_STATS: "general" # "general", "hold", "eval"
+      ALLOW_UNUSED: True
 
     MTEST:
       ONLY_ONE_DOMAIN: False # True-> only use one domain in meta-test

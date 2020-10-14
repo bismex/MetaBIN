@@ -53,6 +53,7 @@ class Bottleneck(nn.Module):
         # )
         self.conv3 = meta_conv2d(mid_channels, out_channels, 1, bias=False)
         self.bn = meta_norm(bn_norm, out_channels, norm_opt = norm_opt)
+        # print(self.use_residual)
 
     def forward(self, x, opt = None):
         m = self.conv1(x, opt) # conv block
@@ -283,10 +284,12 @@ def build_mobilenet_v2_backbone(cfg):
                 state_dict[name].requires_grad = copy.copy(requires_dict[name])
                 # print(requires_dict[name])
 
-        # for name, values in requires_dict.copy().items():
-        #     if name in state_dict:
-        #         state_dict[name].requires_grad = True
-                # print(requires_dict[name])
+        if cfg.MODEL.NORM.TYPE_BACKBONE == 'DualNorm':
+            for name, values in state_dict.copy().items():
+                if ('bn' in name):
+                    if ('layer1' in name) or ('layer2' in name) or ('layer3' in name) or \
+                            ('layer4' in name) or ('layer5' in name) or ('layer6' in name):
+                        del state_dict[name]
 
         incompatible = model.load_state_dict(state_dict, strict=False)
 
