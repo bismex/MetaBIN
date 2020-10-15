@@ -43,19 +43,6 @@ def setup(args):
             config_file_name[i] = config_file_name[i][:-4]
     cfg.OUTPUT_DIR = '/'.join(config_file_name)
 
-    # automatic resume file
-    # if args.resume and os.path.isdir(cfg.OUTPUT_DIR):
-    #     max_iter = 0
-    #     find_file = ''
-    #     for file in os.listdir(cfg.OUTPUT_DIR):
-    #         if file.endswith(".pth"):
-    #             str_iter = re.findall(r'\d+', file)
-    #             num_iter = int(str_iter[-1])
-    #             if num_iter > max_iter:
-    #                 find_file = file
-    #     cfg.MODEL.WEIGHTS = os.path.join(cfg.OUTPUT_DIR, find_file)
-    #     print("cfg.MODEL.WEIGHTS:", cfg.MODEL.WEIGHTS)
-
     cfg.merge_from_list(args.opts)
     cfg.freeze()
     default_setup(cfg, args)
@@ -70,21 +57,14 @@ def main(args):
         cfg.MODEL.BACKBONE.PRETRAIN = False
         model = Trainer.build_model(cfg)
 
+        cfg.MODEL.WEIGHTS = "./logs/Visualize/u01/model_final.pth"
+        # Trainer.resume_or_load(cfg.MODEL.WEIGHTS, resume=args.resume)
         Checkpointer(model).load(cfg.MODEL.WEIGHTS)  # load trained model
 
-        if cfg.TEST.PRECISE_BN.ENABLED and hooks.get_bn_modules(model):
-            prebn_cfg = cfg.clone()
-            prebn_cfg.DATALOADER.NUM_WORKERS = 0  # save some memory and time for PreciseBN
-            prebn_cfg.DATASETS.NAMES = tuple([cfg.TEST.PRECISE_BN.DATASET])  # set dataset name for PreciseBN
-            logger.info("Prepare precise BN dataset")
-            hooks.PreciseBN(
-                # Run at the same freq as (but before) evaluation.
-                model,
-                # Build a new data loader to not affect training
-                Trainer.build_train_loader(prebn_cfg),
-                cfg.TEST.PRECISE_BN.NUM_ITER,
-            ).update_stats()
-        res = Trainer.test(cfg, model)
+
+        res = Trainer.visualize(cfg, model)
+        # res = Trainer.test(cfg, model)
+
         return res
 
     trainer = Trainer(cfg)

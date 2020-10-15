@@ -19,6 +19,9 @@ pip install scikit-learn
 pip install h5py
 pip install imageio
 pip install openpyxl 
+pip install matplotlib 
+pip install pandas 
+pip install seaborn
 ```
 - Need 10.1 cuda version or higher
 - Need recent GPU drivers

@@ -34,7 +34,7 @@ META:
     MTEST_NUM_INSTANCE: 4
 
   MODEL:
-    META_COMPUTE_LAYER: ('backbone_bn_gate', )
+    META_COMPUTE_LAYER: ('backbone_bn_gate',)
     META_UPDATE_LAYER: ('backbone_bn_gate',)
 
   SOLVER:
@@ -42,10 +42,9 @@ META:
       GATE: 10.0 # bigger -> fast update, if 0 -> cyclic
       META: 0.0 # bigger -> meta_train ratio, if 0 -> cyclic
       META_CYCLIC_RATIO: 10.0
-      META_CYCLIC_PERIOD_PER_EPOCH: 1.0
-      META_CYCLIC_UP_RATIO: 0.5 # 1 means only up, 0 means only down
-      META_CYCLIC_MIDDLE_LR: 0.1
-      META_CYCLIC_NEW: True
+      META_CYCLIC_PERIOD_PER_EPOCH: 2.0
+      # MTrain-stepsize -> B_LR*(Compute param LR)*META_UPDATE (if gate)
+      # MTest-stepsize -> B_LR*GATE(Update param LR)
 
     INIT:
       FIRST_INNER_LOOP: 10 # basic init training depends on total iteration (num of backward)
@@ -80,23 +79,23 @@ META:
   LOSS:
     COMBINED: False # True-> Mtotal = Mtrain + Mtest
     WEIGHT: 1.0 # w * MTRAIN + MTEST (when combined)
-    MTRAIN_NAME: ("TripletLoss_mtrain",) # "CrossEntropyLoss", "TripletLoss_mtrain", "MMD", "JSD", "STD", "GRL"
-    MTEST_NAME: ("TripletLoss_mtest",) # "CrossEntropyLoss", "TripletLoss_mtest"
+    MTRAIN_NAME: ("MMD","STD","TripletLoss_mtrain") # "CrossEntropyLoss", "TripletLoss_mtrain", "MMD", "JSD", "STD", "GRL"
+    MTEST_NAME: ("CrossEntropyLoss", "TripletLoss_mtest",) # "CrossEntropyLoss", "TripletLoss_mtest"
 
 
 MODEL:
   META_ARCHITECTURE: "Metalearning"
   BACKBONE:
     NAME: "build_mobilenet_v2_backbone" # "build_resnet_backbone", "build_mobilenet_v2_backbone"
-    DEPTH: 10 # ResNet->18,34,50,101,152, Mobilenet->10,14
+    DEPTH: 14 # ResNet->18,34,50,101,152, Mobilenet->10,14
     WITH_IBN: False  # 'pretrained/resnet50_ibn_a.pth'
     WITH_NL: False
     PRETRAIN: True
-    PRETRAIN_PATH: 'pretrained/mobilenetv2_1.0.pth' # 'pretrained/mobilenetv2_1.0.pth' or 'pretrained/mobilenetv2_1.4.pth'
+    PRETRAIN_PATH: 'pretrained/mobilenetv2_1.4.pth' # 'pretrained/mobilenetv2_1.0.pth' or 'pretrained/mobilenetv2_1.4.pth'
     NUM_BATCH_TRACKED: False # default-> False (resnet)
     LAST_STRIDE: 1
   HEADS:
-    IN_FEAT: 1280 # ResNet 2048, Mobilenet w1.0 1280, w1.4 1792
+    IN_FEAT: 1792 # ResNet 2048, Mobilenet w1.0 1280, w1.4 1792
     NAME: "MetalearningHead"
     POOL_LAYER: "avgpool" # 'fastavgpool', 'avgpool', 'maxpool', 'gempoolP', 'gempool', 'avgmaxpool', 'clipavgpool', 'identity'
     CLS_LAYER: "linear" # 'linear', 'arcSoftmax(x)', 'circleSoftmax', 'amSoftmax(poor)'
@@ -106,14 +105,6 @@ MODEL:
     TRI:
       HARD_MINING: True
       MARGIN: 0.3
-      FEAT_ORDER: 'before'
-    TRI_ADD:
-      SCALE: 0.1
-      HARD_MINING: True
-      MARGIN: 0.3
-      NORM_FEAT: False
-      NEW_POS: [ 0,0,1 ]
-      NEW_NEG: [ 0,1,0 ]
       FEAT_ORDER: 'before'
     TRI_MTRAIN:
       HARD_MINING: True
@@ -140,11 +131,6 @@ MODEL:
       SCALE: 1.0
       FEAT_ORDER: 'before'
       TYPE: 'domain' # 'all', 'all_channel', 'domain', 'domain_channel'
-    SCT:
-      SCALE: 1.0
-      NORM: True
-      FEAT_ORDER: 'before'
-      TYPE: 'cosine_sim' # 'cosine', 'euclidean'
     NAME: ("CrossEntropyLoss","TripletLoss",) # "CrossEntropyLoss", "TripletLoss","CircleLoss"
   NORM:
     BN_AFFINE: True # learn w,b (required)

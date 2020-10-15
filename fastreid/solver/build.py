@@ -18,6 +18,8 @@ def build_optimizer(cfg, model, solver_opt, momentum, flag = None):
             continue
         lr = cfg.SOLVER.BASE_LR
         weight_decay = cfg.SOLVER.WEIGHT_DECAY
+        if "backbone" in key:
+            lr *= cfg.SOLVER.BACKBONE_LR_FACTOR
         if "heads" in key:
             lr *= cfg.SOLVER.HEADS_LR_FACTOR
         if "bias" in key:

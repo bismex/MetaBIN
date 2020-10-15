@@ -18,7 +18,7 @@ META:
     NORM: True # norm after bottleneck layer
 
   DATA:
-    NAMES: "DG" # 'VeRi_keypoint_each_4', 'DG'
+    NAMES: "" # 'VeRi_keypoint_each_4', 'DG'
     LOADER_FLAG: 'diff' # "each"(3), "diff"(2), "same"(1)
 
     # enable when LOADER_FLAG is 'each' or 'diff'
@@ -39,13 +39,12 @@ META:
 
   SOLVER:
     LR_FACTOR:
-      GATE: 10.0 # bigger -> fast update, if 0 -> cyclic
-      META: 0.0 # bigger -> meta_train ratio, if 0 -> cyclic
+      GATE: 1.0 # bigger -> fast update, if 0 -> cyclic
+      META: 1.0 # bigger -> meta_train ratio, if 0 -> cyclic
       META_CYCLIC_RATIO: 10.0
-      META_CYCLIC_PERIOD_PER_EPOCH: 1.0
-      META_CYCLIC_UP_RATIO: 0.5 # 1 means only up, 0 means only down
-      META_CYCLIC_MIDDLE_LR: 0.1
-      META_CYCLIC_NEW: True
+      META_CYCLIC_PERIOD_PER_EPOCH: 2.0
+      # MTrain-stepsize -> B_LR*(Compute param LR)*META_UPDATE (if gate)
+      # MTest-stepsize -> B_LR*GATE(Update param LR)
 
     INIT:
       FIRST_INNER_LOOP: 10 # basic init training depends on total iteration (num of backward)
@@ -80,8 +79,8 @@ META:
   LOSS:
     COMBINED: False # True-> Mtotal = Mtrain + Mtest
     WEIGHT: 1.0 # w * MTRAIN + MTEST (when combined)
-    MTRAIN_NAME: ("TripletLoss_mtrain",) # "CrossEntropyLoss", "TripletLoss_mtrain", "MMD", "JSD", "STD", "GRL"
-    MTEST_NAME: ("TripletLoss_mtest",) # "CrossEntropyLoss", "TripletLoss_mtest"
+    MTRAIN_NAME: ("MMD","STD","TripletLoss_mtrain") # "CrossEntropyLoss", "TripletLoss_mtrain", "MMD", "JSD", "STD", "GRL"
+    MTEST_NAME: ("CrossEntropyLoss", "TripletLoss_mtest",) # "CrossEntropyLoss", "TripletLoss_mtest"
 
 
 MODEL:
@@ -106,14 +105,6 @@ MODEL:
     TRI:
       HARD_MINING: True
       MARGIN: 0.3
-      FEAT_ORDER: 'before'
-    TRI_ADD:
-      SCALE: 0.1
-      HARD_MINING: True
-      MARGIN: 0.3
-      NORM_FEAT: False
-      NEW_POS: [ 0,0,1 ]
-      NEW_NEG: [ 0,1,0 ]
       FEAT_ORDER: 'before'
     TRI_MTRAIN:
       HARD_MINING: True
@@ -140,12 +131,7 @@ MODEL:
       SCALE: 1.0
       FEAT_ORDER: 'before'
       TYPE: 'domain' # 'all', 'all_channel', 'domain', 'domain_channel'
-    SCT:
-      SCALE: 1.0
-      NORM: True
-      FEAT_ORDER: 'before'
-      TYPE: 'cosine_sim' # 'cosine', 'euclidean'
-    NAME: ("CrossEntropyLoss","TripletLoss",) # "CrossEntropyLoss", "TripletLoss","CircleLoss"
+    NAME: ("CrossEntropyLoss", "TripletLoss",) # "CrossEntropyLoss", "TripletLoss","CircleLoss"
   NORM:
     BN_AFFINE: True # learn w,b (required)
     BN_RUNNING: True # apply running mean, var (required)
@@ -164,7 +150,7 @@ MODEL:
     IN_W_FREEZE: False
     IN_B_FREEZE: False
 
-    TYPE_BACKBONE: "BIN_gate2"
+    TYPE_BACKBONE: "BN"
     TYPE_BOTTLENECK: "BN" # "BN", "BIN_half", "BIN_gate1" (original), "BIN_gate2" [IN_FC_MULTIPLY]
     TYPE_CLASSIFIER: "BN" #
 
@@ -180,7 +166,7 @@ DATASETS:
 DATALOADER:
   NUM_INSTANCE: 4
   NUM_WORKERS: 2
-  NAIVE_WAY: True # True-> random, False-> same domain
+  NAIVE_WAY: False # True-> random, False-> same domain
   DELETE_REM: False # when false -> more images
   INDIVIDUAL: False
 
@@ -194,7 +180,7 @@ SOLVER:
   CYCLIC_PERIOD_PER_EPOCH: 1.0
   CYCLIC_MIN_LR: 0.0001
   CYCLIC_MAX_LR: 0.01
-  NORM_SCHEDULER: 'equal' # 'same', 'no_warm', 'equal', 'cyclic'
+  NORM_SCHEDULER: 'same' # 'same', 'no_warm', 'equal', 'cyclic'
   BASE_LR: 0.01 # 0.01
   ETA_MIN_LR: 7.7e-5
 

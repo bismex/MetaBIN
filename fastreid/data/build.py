@@ -200,16 +200,22 @@ def build_reid_train_loader(cfg):
     return train_loader, train_loader_add, cfg
 
 
-def build_reid_test_loader(cfg, dataset_name, opt=None):
+def build_reid_test_loader(cfg, dataset_name, opt=None, flag_test=True):
     test_transforms = build_transforms(cfg, is_train=False)
 
     if opt is None:
         dataset = DATASET_REGISTRY.get(dataset_name)(root=_root)
         if comm.is_main_process():
-            dataset.show_test()
+            if flag_test:
+                dataset.show_test()
+            else:
+                dataset.show_train()
     else:
         dataset = DATASET_REGISTRY.get(dataset_name)(root=[_root, opt])
-    test_items = dataset.query + dataset.gallery
+    if flag_test:
+        test_items = dataset.query + dataset.gallery
+    else:
+        test_items = dataset.train
 
     test_set = CommDataset(test_items, test_transforms, relabel=False)
 

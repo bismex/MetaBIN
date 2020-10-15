@@ -34,7 +34,7 @@ META:
     MTEST_NUM_INSTANCE: 4
 
   MODEL:
-    META_COMPUTE_LAYER: ('backbone_bn_gate',)
+    META_COMPUTE_LAYER: ('backbone_bn_gate', )
     META_UPDATE_LAYER: ('backbone_bn_gate',)
 
   SOLVER:
@@ -42,15 +42,13 @@ META:
       GATE: 10.0 # bigger -> fast update, if 0 -> cyclic
       META: 0.0 # bigger -> meta_train ratio, if 0 -> cyclic
       META_CYCLIC_RATIO: 10.0
-      META_CYCLIC_PERIOD_PER_EPOCH: 2.0
+      META_CYCLIC_PERIOD_PER_EPOCH: 1.0
       META_CYCLIC_UP_RATIO: 0.5 # 1 means only up, 0 means only down
       META_CYCLIC_MIDDLE_LR: 0.1
       META_CYCLIC_NEW: True
-      # MTrain-stepsize -> B_LR*(Compute param LR)*META_UPDATE (if gate)
-      # MTest-stepsize -> B_LR*GATE(Update param LR)
 
     INIT:
-      FIRST_INNER_LOOP: 0 # basic init training depends on total iteration (num of backward)
+      FIRST_INNER_LOOP: 10 # basic init training depends on total iteration (num of backward)
       INNER_LOOP: 1 # basic init training depends on total iteration (num of backward)
       OUTER_LOOP: 1 # meta-training (num of backward) [Shuffled]
       TYPE_RUNNING_STATS: "general" # "general", "hold", "eval"
@@ -109,6 +107,14 @@ MODEL:
       HARD_MINING: True
       MARGIN: 0.3
       FEAT_ORDER: 'before'
+    TRI_ADD:
+      SCALE: 0.1
+      HARD_MINING: True
+      MARGIN: 0.3
+      NORM_FEAT: False
+      NEW_POS: [ 0,0,1 ]
+      NEW_NEG: [ 0,1,0 ]
+      FEAT_ORDER: 'before'
     TRI_MTRAIN:
       HARD_MINING: True
       MARGIN: 0.3
@@ -134,6 +140,11 @@ MODEL:
       SCALE: 1.0
       FEAT_ORDER: 'before'
       TYPE: 'domain' # 'all', 'all_channel', 'domain', 'domain_channel'
+    SCT:
+      SCALE: 1.0
+      NORM: True
+      FEAT_ORDER: 'before'
+      TYPE: 'cosine_sim' # 'cosine', 'euclidean'
     NAME: ("CrossEntropyLoss","TripletLoss",) # "CrossEntropyLoss", "TripletLoss","CircleLoss"
   NORM:
     BN_AFFINE: True # learn w,b (required)
@@ -185,6 +196,7 @@ SOLVER:
   CYCLIC_MAX_LR: 0.01
   NORM_SCHEDULER: 'equal' # 'same', 'no_warm', 'equal', 'cyclic'
   BASE_LR: 0.01 # 0.01
+  BACKBONE_LR_FACTOR: 0.1
   ETA_MIN_LR: 7.7e-5
 
   MAX_ITER: 70 # vehicle: 100

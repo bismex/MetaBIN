@@ -88,15 +88,15 @@ MODEL:
   META_ARCHITECTURE: "Metalearning"
   BACKBONE:
     NAME: "build_mobilenet_v2_backbone" # "build_resnet_backbone", "build_mobilenet_v2_backbone"
-    DEPTH: 10 # ResNet->18,34,50,101,152, Mobilenet->10,14
+    DEPTH: 14 # ResNet->18,34,50,101,152, Mobilenet->10,14
     WITH_IBN: False  # 'pretrained/resnet50_ibn_a.pth'
     WITH_NL: False
-    PRETRAIN: True
-    PRETRAIN_PATH: 'pretrained/mobilenetv2_1.0.pth' # 'pretrained/mobilenetv2_1.0.pth' or 'pretrained/mobilenetv2_1.4.pth'
+    PRETRAIN: False
+    PRETRAIN_PATH: '' # 'pretrained/mobilenetv2_1.0.pth' or 'pretrained/mobilenetv2_1.4.pth'
     NUM_BATCH_TRACKED: False # default-> False (resnet)
     LAST_STRIDE: 1
   HEADS:
-    IN_FEAT: 1280 # ResNet 2048, Mobilenet w1.0 1280, w1.4 1792
+    IN_FEAT: 1792 # ResNet 2048, Mobilenet w1.0 1280, w1.4 1792
     NAME: "MetalearningHead"
     POOL_LAYER: "avgpool" # 'fastavgpool', 'avgpool', 'maxpool', 'gempoolP', 'gempool', 'avgmaxpool', 'clipavgpool', 'identity'
     CLS_LAYER: "linear" # 'linear', 'arcSoftmax(x)', 'circleSoftmax', 'amSoftmax(poor)'

@@ -16,6 +16,9 @@ from collections import OrderedDict
 import numpy
 import torch
 import torch.nn.functional as F
+import matplotlib.pyplot as plt
+
+import copy
 from torch.nn.parallel import DistributedDataParallel
 
 from fastreid.data import build_reid_test_loader, build_reid_train_loader
@@ -34,6 +37,10 @@ import torch.optim as optim
 from torch.autograd import Variable
 from . import hooks
 from .train_loop import SimpleTrainer
+import pandas as pd
+
+from sklearn.manifold import TSNE
+import seaborn as sns
 # import logging
 # logger = logging.getLogger(__name__)
 
@@ -569,17 +576,246 @@ class DefaultTrainer(SimpleTrainer):
         logger.info("Prepare training set")
         return build_reid_train_loader(cfg)
     @classmethod
-    def build_test_loader(cls, cfg, dataset_name, opt=None):
+    def build_test_loader(cls, cfg, dataset_name, opt=None, flag_test = True):
         """
         Returns:
             iterable
         It now calls :func:`fastreid.data.build_detection_test_loader`.
         Overwrite it if you'd like a different data loader.
         """
-        return build_reid_test_loader(cfg, dataset_name, opt)
+        return build_reid_test_loader(cfg, dataset_name, opt, flag_test)
     @classmethod
     def build_evaluator(cls, cfg, num_query, output_dir=None):
         return ReidEvaluator(cfg, num_query, output_dir)
+
+
+    @classmethod
+    def visualize(cls, cfg, model):
+
+
+        # all_dataset = ("GRID_1", "VIPER_1a", "PRID_1", "iLIDS_1", ) # VIPER_1a~10d, others_1~10
+        # all_dataset = ("CUHK02", "CUHK03_detected", "Market1501", "DukeMTMC", "CUHK_SYSU", )
+        all_dataset = ("GRID_1", "VIPER_1a", "PRID_1", "iLIDS_1", "CUHK02", "CUHK03_detected", "Market1501", "DukeMTMC", "CUHK_SYSU", )
+        # all_dataset = ("CUHK02", "CUHK03_detected",)
+        test_num_classes = 10
+        test_num_images = 2
+        train_num_classes = 10
+        train_num_images = 2 # less than
+        train_skip_epoch = 0
+        minimum_number_of_images = 2 # more than
+
+        model.eval()
+        logger = logging.getLogger(__name__)
+
+        all_feat = []
+        all_ids = []
+        all_cams = []
+        all_domains = []
+
+        for dataset_idx, dataset_name in enumerate(all_dataset):
+            logger.info("Prepare testing set")
+            if 'VIPER' in dataset_name: # 316+316 images (316 IDs) -> 316 IDs x 2 images
+                dataset_name_local = 'DG_VIPeR'
+                sub_name = 'split_{}'.format(dataset_name.split('_')[-1])
+                flag_test = True
+            elif 'PRID' in dataset_name: # 100+649 images (649 IDs) -> 100 IDs x 2 images
+                dataset_name_local = 'DG_PRID'
+                sub_name = int(dataset_name.split('_')[-1])
+                flag_test = True
+            elif 'GRID' in dataset_name: # 125+1025 images (900 IDs) -> 125 IDs x 2?3? images
+                dataset_name_local = 'DG_GRID'
+                sub_name = int(dataset_name.split('_')[-1])
+                flag_test = True
+            elif 'iLIDS' in dataset_name: # 60+60 images (60 IDs) -> 60 IDs x 2 images
+                dataset_name_local = 'DG_iLIDS'
+                sub_name = int(dataset_name.split('_')[-1])
+                flag_test = True
+
+            elif 'CUHK02' in dataset_name: # 7264 images (1816 IDs) -> A IDs x 4 images
+                dataset_name_local = 'DG_CUHK02'
+                sub_name = None
+                flag_test = False
+            elif 'CUHK03_detected' in dataset_name: # 14097 images (1467 IDs) -> A IDs x 9~10 images
+                dataset_name_local = 'DG_CUHK03_detected'
+                sub_name = None
+                flag_test = False
+            elif 'Market1501' in dataset_name: # 29419 images (1501 IDs) -> A IDs x 19~20 images
+                dataset_name_local = 'DG_Market1501'
+                sub_name = None
+                flag_test = False
+            elif 'DukeMTMC' in dataset_name: # 36411 images (1812 IDs) -> A IDs x 20 images
+                dataset_name_local = 'DG_DukeMTMC'
+                sub_name = None
+                flag_test = False
+            elif 'CUHK_SYSU' in dataset_name: # 34574 images (11934 IDs) -> A IDs x 3 images
+                dataset_name_local = 'DG_CUHK_SYSU'
+                sub_name = None
+                flag_test = False
+
+            with torch.no_grad():
+                feat = []
+                ids = []
+                cams = []
+                domains = []
+                logger.info("Subset: {}".format(sub_name))
+                data_loader, num_query = cls.build_test_loader(cfg, dataset_name_local, opt = sub_name, flag_test = flag_test)
+                total = len(data_loader)
+
+                data_loader_cnt = 0
+                first_flag = True
+                for data_loader_idx, inputs in enumerate(data_loader):
+                    if not flag_test:
+                        if data_loader_cnt < train_skip_epoch:
+                            data_loader_cnt += 1
+                            continue
+
+                    logger.info("Dataset [{}] is loaded ({}/{})".format(dataset_name_local, data_loader_idx, total))
+                    outputs = model(inputs)
+                    if torch.cuda.is_available():
+                        torch.cuda.synchronize()
+
+                    # targets = [dataset_name_local + '_' + str(x) for x in inputs["targets"].numpy()]
+                    if flag_test:
+                        targets = inputs["targets"].numpy().tolist()
+                        camids = inputs["camid"].numpy().tolist()
+                    else:
+                        targets = [int(x.split('_')[-1]) for x in inputs["targets"]]
+                        camids = inputs["camid"].numpy().tolist()
+
+                    local_feat = outputs.cpu()
+                    local_ids = torch.Tensor(targets)
+                    local_cams = torch.Tensor(camids)
+
+                    selected_idx = 0
+                    if not flag_test:
+                        if 'CUHK02' in dataset_name:
+                            min_images = 2
+                        else:
+                            min_images = minimum_number_of_images
+                        selected_idx = None
+                        unique_idx = torch.unique(local_ids)
+                        cnt = 0
+                        for i in range(len(unique_idx)):
+                            find_idx = (local_ids == unique_idx[i]).nonzero().view(-1)
+                            if len(find_idx) >= min_images:
+                                if cnt == 0:
+                                    selected_idx = copy.deepcopy(find_idx)
+                                    cnt = cnt + 1
+                                else:
+                                    selected_idx = torch.cat((selected_idx, find_idx), 0)
+                        if selected_idx is not None:
+                            local_feat = local_feat[selected_idx]
+                            local_ids = local_ids[selected_idx]
+                            local_cams = local_cams[selected_idx]
+
+                    if selected_idx is not None:
+                        if first_flag:
+                            feat = copy.deepcopy(local_feat)
+                            ids = copy.deepcopy(local_ids)
+                            cams = copy.deepcopy(local_cams)
+                            first_flag = False
+                        else:
+                            feat = torch.cat((feat, local_feat), 0)
+                            ids = torch.cat((ids, local_ids), 0)
+                            cams = torch.cat((cams, local_cams), 0)
+
+                        if not flag_test:
+                            if len(torch.unique(ids)) > train_num_classes:
+                                break
+                if flag_test:
+                    num_classes = test_num_classes
+                    num_images = test_num_images
+                else:
+                    num_classes = train_num_classes
+                    num_images = train_num_images
+
+
+                unique_idx = torch.unique(ids)
+                if 'GRID' in dataset_name:
+                    selected_idx = unique_idx[1:num_classes + 1]
+                else:
+                    selected_idx = unique_idx[:num_classes]
+                for i in range(len(selected_idx)):
+                    if i == 0:
+                        change_idx_local = (ids == selected_idx[i]).nonzero().view(-1)
+                        if flag_test:
+                            assert len(change_idx_local) <= 4
+                        change_idx = copy.deepcopy(change_idx_local[:num_images])
+                    else:
+                        change_idx_local = (ids == selected_idx[i]).nonzero().view(-1)
+                        if flag_test:
+                            assert len(change_idx_local) <= 4
+                        change_idx_local = copy.deepcopy(change_idx_local[:num_images])
+                        change_idx = torch.cat((change_idx, change_idx_local), 0)
+                # re-arrange
+                feat = feat[change_idx]
+                ids = ids[change_idx]
+                cams = cams[change_idx]
+                domains = copy.deepcopy(cams)
+                domains[:] = dataset_idx
+
+                assert len(change_idx) == len(torch.unique(change_idx))
+
+                all_feat.append(feat)
+                all_ids.append(ids)
+                all_cams.append(cams)
+                all_domains.append(domains)
+
+        all_feat = torch.cat(all_feat, dim=0)
+        all_ids = torch.cat(all_ids, dim=0).int()
+        all_cams = torch.cat(all_cams, dim=0).int()
+        all_domains = torch.cat(all_domains, dim=0).int()
+
+        normalize_features = True
+
+        if normalize_features:
+            all_feat = F.normalize(all_feat, dim=1)
+
+        # dist = 1 - torch.mm(query_feat, gallery_feat.t())
+
+
+        tsne = TSNE(n_components=2, perplexity=10, n_iter=300)
+        tsne_ref = tsne.fit_transform(all_feat)
+        df = pd.DataFrame(tsne_ref, index=tsne_ref[0:, 1])
+        df['x'] = tsne_ref[:, 0]
+        df['y'] = tsne_ref[:, 1]
+        df['Label'] = all_domains[:]
+        # sns.scatterplot(x="x", y="y", hue="y", palette=sns.color_palette("hls", 10), data=df)
+        sns.lmplot(x="x", y="y", data=df, fit_reg=False, legend=True, size=9, hue='Label',
+                   scatter_kws={"s": 200, "alpha": 0.5})
+        plt.title('t-SNE result', weight='bold').set_fontsize('14')
+        plt.xlabel('x', weight='bold').set_fontsize('10')
+        plt.ylabel('y', weight='bold').set_fontsize('10')
+        plt.show()
+
+
+        cnt = 0
+        list_idx = [0, 1, 2, 3, 4, 5, 6, 7, 8]
+        # list_idx = [0]
+        for i in list_idx:
+            if cnt == 0:
+                new_idx = (all_domains == i).nonzero().view(-1)
+            else:
+                new_idx = torch.cat((new_idx, (all_domains == i).nonzero().view(-1)), 0)
+            cnt += 1
+
+        tsne = TSNE(n_components=2, perplexity=10, n_iter=300)
+        tsne_ref = tsne.fit_transform(F.normalize(all_feat[new_idx], dim=0))
+        df = pd.DataFrame(tsne_ref, index=tsne_ref[0:, 1])
+        df['x'] = tsne_ref[:, 0]
+        df['y'] = tsne_ref[:, 1]
+        df['Label'] = all_domains[new_idx]
+        # sns.scatterplot(x="x", y="y", hue="y", palette=sns.color_palette("hls", 10), data=df)
+        sns.lmplot(x="x", y="y", data=df, fit_reg=False, legend=True, size=9, hue='Label',
+                   scatter_kws={"s": 200, "alpha": 0.5})
+        plt.title('t-SNE result', weight='bold').set_fontsize('14')
+        plt.xlabel('x', weight='bold').set_fontsize('10')
+        plt.ylabel('y', weight='bold').set_fontsize('10')
+        plt.show()
+
+
+
+        return 0
     @classmethod
     def test(cls, cfg, model, evaluators=None):
         """
