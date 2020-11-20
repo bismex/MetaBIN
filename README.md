@@ -3,6 +3,7 @@
 ## 1) git clone
 
 `git clone our_repository`
+- If you can't clone our repository, you can download in this [link](https://drive.google.com/u/0/uc?id=1gA6mKuaadZPAw9MOJY9EKQCFKmng9cqr&export=download)
 
 ## 2) Preparation
 
