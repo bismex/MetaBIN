@@ -122,6 +122,7 @@ MODEL:
       NEW_NEG: [ 0,1,0 ]
       FEAT_ORDER: 'before'
     TRI_MTRAIN:
+      SCALE: 1.0
       HARD_MINING: True
       MARGIN: 0.3
       NORM_FEAT: False

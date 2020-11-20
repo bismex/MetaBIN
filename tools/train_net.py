@@ -82,7 +82,6 @@ def main(args):
         logger.info("Using a generated random seed {}".format(cfg.META.SOLVER.MANUAL_SEED_NUMBER))
 
 
-
     # cfg.MODEL.WEIGHTS = "./logs/Visualize/u01/model_final.pth"
     # Trainer.resume_or_load(cfg.MODEL.WEIGHTS, resume=args.resume)
     if args.eval_only or args.dist_only or args.tsne_only or args.domain_only:
@@ -131,9 +130,7 @@ def main(args):
     trainer.resume_or_load(resume=args.resume)
     return trainer.train() # train_loop.py -> train
 
-
 if __name__ == "__main__":
-
     args = default_argument_parser().parse_args()
     print("Command Line Args:", args)
     launch(
@@ -145,4 +142,3 @@ if __name__ == "__main__":
         args=(args,),
     )
 
-    # sdsdf

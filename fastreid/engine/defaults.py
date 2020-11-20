@@ -178,17 +178,18 @@ class DefaultTrainer(SimpleTrainer):
         if not logger.isEnabledFor(logging.INFO):  # setup_logger is not called for fastreid
             setup_logger()
 
-        data_loader, data_loader_add, cfg = self.build_train_loader(cfg)
-        cfg = self.auto_scale_hyperparams(cfg, data_loader)
-        model = self.build_model(cfg)
+
+        data_loader, data_loader_add, cfg = self.build_train_loader(cfg) # Build datasets
+        cfg = self.auto_scale_hyperparams(cfg, data_loader) # auto scale hyperparameters
+        model = self.build_model(cfg) # our model initialization
 
 
-
+        # optimizer for base model
         optimizer_main = self.build_optimizer(cfg, model,
                                               solver_opt = cfg.SOLVER.OPT,
                                               momentum = cfg.SOLVER.MOMENTUM,
                                               flag = 'main') # params, lr, momentum, ..
-        if 'BIN_gate' in cfg.MODEL.NORM.TYPE_BACKBONE:
+        if 'BIN_gate' in cfg.MODEL.NORM.TYPE_BACKBONE: # optimizer for balancing parameter
             optimizer_norm = self.build_optimizer(cfg, model,
                                                   solver_opt=cfg.SOLVER.OPT_NORM,
                                                   momentum=cfg.SOLVER.MOMENTUM_NORM,
@@ -198,7 +199,7 @@ class DefaultTrainer(SimpleTrainer):
 
         torch.cuda.empty_cache()
         meta_param = dict()
-        if cfg.META.DATA.NAMES != "":
+        if cfg.META.DATA.NAMES != "": # parameters for meta-learning (refer to fastreid/engine/defaults.py)
 
             meta_param['synth_data'] = cfg.META.DATA.SYNTH_FLAG
             meta_param['synth_method'] = cfg.META.DATA.SYNTH_METHOD
@@ -309,7 +310,7 @@ class DefaultTrainer(SimpleTrainer):
             )
 
         super().__init__(cfg, model, data_loader, data_loader_add, optimizer_main, optimizer_norm, meta_param)
-
+        # scheduler for base model
         self.scheduler_main = self.build_lr_scheduler(
             optimizer = optimizer_main,
             scheduler_method = cfg.SOLVER.SCHED,
@@ -322,8 +323,8 @@ class DefaultTrainer(SimpleTrainer):
             delay_iters=cfg.SOLVER.DELAY_ITERS,
             eta_min_lr=cfg.SOLVER.ETA_MIN_LR,
         )
-        # self.scheduler_main.step()
 
+        # scheduler for balancing parameters
         if optimizer_norm is not None:
             if cfg.SOLVER.NORM_SCHEDULER == 'same':
                 self.scheduler_norm = self.build_lr_scheduler(

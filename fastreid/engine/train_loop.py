@@ -125,9 +125,9 @@ class TrainerBase:
             self.before_train() # check hooks.py, engine/defaults.py
             for self.iter in range(start_iter, max_iter):
                 self.before_step()
-                if self.cfg.META.DATA.NAMES == '':
+                if self.cfg.META.DATA.NAMES == '': # general learning (not meta-learning)
                     self.run_step()
-                else:
+                else: # our model (MAML-based)
                     self.cnt = 0
                     self.data_time_all = 0.0
                     self.metrics_dict = dict()
@@ -136,12 +136,12 @@ class TrainerBase:
                     else:
                         max_init = self.meta_param['iter_init_inner']
                     while (self.cnt < max_init):
-                        self.run_step_meta_learning1()
+                        self.run_step_meta_learning1() # update base model
                         self.cnt += 1
 
                     self.cnt = 0
                     while (self.cnt < self.meta_param['iter_init_outer']):
-                        self.run_step_meta_learning2()
+                        self.run_step_meta_learning2() # update balancing parameters (meta-learning)
                         self.cnt += 1
                         self.global_meta_cnt += 1
                     # print(self.iter)
@@ -184,12 +184,12 @@ class SimpleTrainer(TrainerBase):
         else:
             self.scaler = None
 
-        # additional setting
+        # balancing parameters
         self.bin_gates = [p for p in self.model.parameters() if getattr(p, 'bin_gate', False)]
         self.bin_names = [name for name, values in self.model.named_parameters() if getattr(values, 'bin_gate', False)]
+
         # Meta-leaning setting
         if len(self.meta_param) > 0:
-
             if data_loader_add['mtrain'] != None:
                 self.data_loader_mtrain = data_loader_add['mtrain']
                 if isinstance(self.data_loader_mtrain, list):
@@ -201,7 +201,6 @@ class SimpleTrainer(TrainerBase):
             else:
                 self.data_loader_mtrain = None
                 self._data_loader_iter_mtrain = self._data_loader_iter
-
             if data_loader_add['mtest'] != None:
                 self.data_loader_mtest = data_loader_add['mtest']
                 if isinstance(self.data_loader_mtest, list):
@@ -386,6 +385,9 @@ class SimpleTrainer(TrainerBase):
             # self.inner_clamp = True
             self.print_flag = False
 
+    #####################################################################
+    # general learning (not meta-learning, not our model)
+    #####################################################################
     def run_step(self):
         # initial setting
         # self.optimizer.zero_grad()
@@ -434,7 +436,11 @@ class SimpleTrainer(TrainerBase):
         # print(time.perf_counter() - start)
         # if self.iter % (self.cfg.SOLVER.WRITE_PERIOD_PARAM * self.cfg.SOLVER.WRITE_PERIOD) == 0:
         #     self.logger_parameter_info(self.model)
-    def run_step_meta_learning1(self):
+
+    #####################################################################
+    # base model updates (not meta-learning)
+    #####################################################################
+    def run_step_meta_learning1(self): #
 
         # initial setting
         assert self.model.training, "[SimpleTrainer] model was changed to eval mode!"
@@ -473,9 +479,9 @@ class SimpleTrainer(TrainerBase):
                 self.optimizer_norm.zero_grad()
         if self.meta_param['sync']: torch.cuda.synchronize()
 
-        # self.optimizer_main.param_groups[0]['params'][0].data[0] * 10000000
-        # self.model.backbone.layer1.conv.weight * 1000000
-
+    #####################################################################
+    # meta-learning (update balancing parameters)
+    #####################################################################
     def run_step_meta_learning2(self):
 
 
@@ -486,7 +492,6 @@ class SimpleTrainer(TrainerBase):
         if self.cnt == 0:
             self.print_selected_optimizer('2) before meta-train', self.idx_group, self.optimizer_main, self.meta_param['detail_mode'])
             self.print_selected_optimizer('2) before meta-train', self.idx_group_norm, self.optimizer_norm, self.meta_param['detail_mode'])
-
 
         mtrain_losses = []
         mtest_losses = []
@@ -504,7 +509,7 @@ class SimpleTrainer(TrainerBase):
             name_loss_mtrain = '2)'
             opt = self.opt_setting('mtrain')
 
-            # self.global_meta_cnt
+            # not used
             if self.meta_param['one_loss_for_iter']:
                 num_losses = len(opt['loss'])
                 num_rem = self.global_meta_cnt % num_losses
@@ -516,6 +521,7 @@ class SimpleTrainer(TrainerBase):
                     num_case = np.random.permutation(num_losses)[0]
                 opt['loss'] = tuple([opt['loss'][num_case]])
 
+            # data loader
             if self.data_loader_mtest == None:
                 if self.meta_param['whole']:
                     data, data_time = self.get_data(self._data_loader_iter_mtrain, list_sample = list_mtrain, opt = 'all')
@@ -591,6 +597,8 @@ class SimpleTrainer(TrainerBase):
             # import matplotlib.pyplot as plt
             # plt.imshow(data_mtrain['images'][0].permute(1, 2, 0)/255)
             # plt.show()
+
+            # not used
             if (self.meta_param['synth_grad'] == 'none') or (self.meta_param['synth_grad'] == 'reverse'):
                 if self.meta_param['freeze_gradient_meta']:
                     self.grad_setting('mtrain_both')
@@ -604,6 +612,8 @@ class SimpleTrainer(TrainerBase):
                         self.metrics_dict[t] = self.metrics_dict[t] + val if t in self.metrics_dict.keys() else val
             else:
                 losses = []
+
+
             # 3) Meta-test
             name_loss_mtest = '3)'
             # self.grad_setting('mtrain_single') # melt only meta_compute parameters
@@ -678,7 +688,7 @@ class SimpleTrainer(TrainerBase):
             self.metrics_dict["data_time"] = self.data_time_all
             self._write_metrics(self.metrics_dict)
 
-        with torch.no_grad():
+        with torch.no_grad(): # for save balancing parameters
             if self.cnt == 0:
                 if len(self.bin_names) > 0 and (self.iter + 1) % (self.cfg.SOLVER.WRITE_PERIOD_BIN) == 0:
                     start = time.perf_counter()
@@ -710,7 +720,9 @@ class SimpleTrainer(TrainerBase):
 
         # print("Processing time: {}".format(time.perf_counter() - start))
 
-        # self.logger_parameter_info(self.model)
+    #####################################################################
+    # load data
+    #####################################################################
     def get_data(self, data_loader_iter, list_sample = None, opt = None):
         start = time.perf_counter()
         if data_loader_iter != None:
@@ -780,6 +792,62 @@ class SimpleTrainer(TrainerBase):
                 # sample data
 
         return data, data_time
+
+    #####################################################################
+    # about data processing
+    #####################################################################
+    def data_aggregation(self, dataloader, list_num):
+        data = None
+        for cnt, list_idx in enumerate(list_num):
+            if cnt == 0:
+                data = next(dataloader[list_idx])
+            else:
+                for name, value in next(dataloader[list_idx]).items():
+                    if torch.is_tensor(value):
+                        data[name] = torch.cat((data[name], value), 0)
+                    elif isinstance(value, dict):
+                        for name_local, value_local in value.items():
+                            if torch.is_tensor(value_local):
+                                data[name][name_local] = torch.cat((data[name][name_local], value_local), 0)
+                    elif isinstance(value, list):
+                        data[name].extend(value)
+
+        return data
+
+    #####################################################################
+    # about data processing
+    #####################################################################
+    def cat_data(self, data1, data2):
+        for name, value in data2.items():
+            if torch.is_tensor(value):
+                data1[name] = torch.cat((data1[name], value), 0)
+            elif isinstance(value, dict):
+                for name_local, value_local in value.items():
+                    if torch.is_tensor(value_local):
+                        data1[name][name_local] = torch.cat(
+                            (data1[name][name_local], value_local), 0)
+            elif isinstance(value, list):
+                data1[name].extend(value)
+
+        return data1
+
+    #####################################################################
+    # about data processing
+    #####################################################################
+    def cat_tuples(self, tuple1, tuple2):
+        list1 = list(tuple1)
+        list2 = list(tuple2)
+        list_all = list1.copy()
+        list_all.extend(list2)
+        list_all = list(set(list_all))
+        if "" in list_all:
+            list_all.remove("")
+        list_all = tuple(list_all)
+        return list_all
+
+    #####################################################################
+    # forward
+    #####################################################################
     def basic_forward(self, data, model, opt = None):
         model = model.module if isinstance(model, DistributedDataParallel) else model
         if data != None:
@@ -793,14 +861,18 @@ class SimpleTrainer(TrainerBase):
             loss_dict = dict()
         # print(loss_dict)
         return losses, loss_dict
+
+    #####################################################################
+    # backward
+    #####################################################################
     def basic_backward(self, losses, optimizer, retain_graph = False):
 
         if (losses != None) and (optimizer != None):
             optimizer.zero_grad()
-            if self.scaler == None:
+            if self.scaler == None: # no AMP
                 losses.backward(retain_graph = retain_graph)
                 optimizer.step()
-            else:
+            else: # with AMP(automatic mixed precision)
                 self.scaler.scale(losses).backward(retain_graph = retain_graph)
                 # self.scaler.unscale_(optimizer)
                 # torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm)
@@ -812,6 +884,10 @@ class SimpleTrainer(TrainerBase):
             # start = time.perf_counter()
             # processing_time = time.perf_counter() - start
             # print('sync time: {}'.format(processing_time))
+
+    #####################################################################
+    # set options (basic, mtrain, mtest) important!
+    #####################################################################
     def opt_setting(self, flag, losses = None):
         if flag == 'basic':
             opt = {}
@@ -843,10 +919,10 @@ class SimpleTrainer(TrainerBase):
             # self.meta_param['update_cyclic_ratio']
             # self.meta_param['update_cyclic_period']
             if self.meta_param['update_ratio'] == 0.0:
-                if self.meta_param['update_cyclic_new']:
+                if self.meta_param['update_cyclic_new']: # cyclic update
                     self.cyclic_scheduler.step()
                     meta_ratio = self.cyclic_optimizer.param_groups[0]['lr']
-                else:
+                else: # not used (old version)
                     one_period = self.meta_param['iters_per_epoch'] / self.meta_param['update_cyclic_period']
                     b = math.log10(self.meta_param['update_cyclic_ratio'])
                     a = b / (one_period/4.0*1.0)
@@ -867,6 +943,7 @@ class SimpleTrainer(TrainerBase):
             else:
                 meta_ratio = self.meta_param['update_ratio']
 
+            # allocate stepsize
             for name, val in self.all_layers.items(): # compute stepsize
                 if self.all_layers[name]['w_param_idx'] != None:
                     self.all_layers[name]['w_step_size'] = \
@@ -913,7 +990,6 @@ class SimpleTrainer(TrainerBase):
                         else:
                             if self.iter == 0:
                                 logger.info("[{}] This parameter does have requires_grad".format(name))
-
 
                     else:
                         for compute_name in list(self.meta_param['meta_compute_layer']):
@@ -1048,9 +1124,11 @@ class SimpleTrainer(TrainerBase):
 
 
         return opt
+
+    #####################################################################
+    # set gradients (not used)
+    #####################################################################
     def grad_setting(self, flag):
-
-
         if flag == 'basic':
             self.grad_requires_remove(
                 model = self.model,
@@ -1083,6 +1161,10 @@ class SimpleTrainer(TrainerBase):
                 freeze_target=self.meta_param['meta_update_layer'],
                 reverse_flag=True, # True: freeze target / False: freeze w/o target
                 print_flag=self.print_flag)
+
+    #####################################################################
+    # for logger
+    #####################################################################
     def find_selected_optimizer(self, find_group, optimizer):
         # find parameter, lr, required_grad, shape
         logger.info('Storage parameter, lr, requires_grad, shape! in {}'.format(find_group))
@@ -1107,6 +1189,10 @@ class SimpleTrainer(TrainerBase):
                 logger.info('error in find_group')
         idx_group = list(set(idx_group))
         return idx_group, dict_group
+
+    #####################################################################
+    # for logger
+    #####################################################################
     def print_selected_optimizer(self, txt, idx_group, optimizer, detail_mode):
         try:
             num_period = self.meta_param['write_period_param']
@@ -1146,50 +1232,30 @@ class SimpleTrainer(TrainerBase):
                     #     logger.info('*****')
                     # else:
                     #     logger.info('[**{}**] --> [{}], w:{}, requires_grad:{}, opt_grad:{}, prm_grad:{}, lr:{}'.format(txt, t_name, round(float(t_param), num_float), t_grad, t_grad_val, m_grad_val, t_lr))
-    # def logger_parameter_info(self, model):
-    #     with torch.no_grad():
-    #         write_dict = dict()
-    #         round_num = 4
-    #         name_num = 20
-    #         for name, param in model.named_parameters():  # only update regularizer
-    #             if 'reg' in name:
-    #                 name = '_'.join([x[:name_num] for x in name.split('.')[1:]])
-    #                 name = name + '+'
-    #                 write_dict[name] = round(float(torch.sum(param.data.view(-1) > 0)) / len(param.data.view(-1)),
-    #                                          round_num)
-    #
-    #         for name, param in model.named_parameters():
-    #             if ('meta' in name) and ('fc' in name) and ('weight' in name) and (not 'domain' in name):
-    #                 name = '_'.join([x[:name_num] for x in name.split('.')[1:]])
-    #                 # name_std = name + '_std'
-    #                 # write_dict[name_std] = round(float(torch.std(param.data.view(-1))), round_num)
-    #                 # name_mean = name + '_mean'
-    #                 # write_dict[name_mean] = round(float(torch.mean(param.data.view(-1))), round_num)
-    #                 name_std10 = name + '_std10'
-    #                 ratio = 0.1
-    #                 write_dict[name_std10] = round(
-    #                     float(torch.sum((param.data.view(-1) > - ratio * float(torch.std(param.data.view(-1)))) * (
-    #                             param.data.view(-1) < ratio * float(torch.std(param.data.view(-1)))))) / len(
-    #                         param.data.view(-1)), round_num)
-    #
-    #         for name, param in model.named_parameters():
-    #             if ('gate' in name) and (not 'domain' in name):
-    #                 name = '_'.join([x[:name_num] for x in name.split('.')[1:]])
-    #                 name_mean = name + '_mean'
-    #                 write_dict[name_mean] = round(float(torch.mean(param.data.view(-1))), round_num)
-    #         logger.info(write_dict)
+
+    #####################################################################
+    # initialize requires_grad (not used)
+    #####################################################################
     def grad_requires_init(self, model):
 
         out_requires_grad = dict()
         for name, param in model.named_parameters():
             out_requires_grad[name] = param.requires_grad
         return out_requires_grad
+
+    #####################################################################
+    # check requires_grad (not used)
+    #####################################################################
     def grad_requires_check(self, model):
 
         out_requires_grad = dict()
         for name, param in model.named_parameters():
             logger.info("[{}], grad: [{}]".format(name, param.requires_grad))
         return out_requires_grad
+
+    #####################################################################
+    # remove requires_grad (not used)
+    #####################################################################
     def grad_requires_remove(self, model, ori_grad, freeze_target, reverse_flag = False, print_flag = False):
 
         if reverse_flag: # freeze layers w/o target layers
@@ -1244,11 +1310,19 @@ class SimpleTrainer(TrainerBase):
                     if print_flag: print("freeze '{}' layer's grad".format(name))
                 else:
                     param.requires_grad = ori_grad[name]
+
+    #####################################################################
+    # recover requires_grad (not used)
+    #####################################################################
     def grad_requires_recover(self, model, ori_grad):
 
         # recover gradient requirements
         for name, param in model.named_parameters():
             param.requires_grad = ori_grad[name]
+
+    #####################################################################
+    # delete gradient values (not used)
+    #####################################################################
     def grad_val_remove(self, model, freeze_target, reverse_flag = False, print_flag = False):
         if reverse_flag: # remove grad w/o target layers
             for name, param in model.named_parameters():
@@ -1290,46 +1364,10 @@ class SimpleTrainer(TrainerBase):
                         param.grad = None
                         if print_flag:
                             print("remove '{}' layer's grad".format(name))
-    def data_aggregation(self, dataloader, list_num):
-        data = None
-        for cnt, list_idx in enumerate(list_num):
-            if cnt == 0:
-                data = next(dataloader[list_idx])
-            else:
-                for name, value in next(dataloader[list_idx]).items():
-                    if torch.is_tensor(value):
-                        data[name] = torch.cat((data[name], value), 0)
-                    elif isinstance(value, dict):
-                        for name_local, value_local in value.items():
-                            if torch.is_tensor(value_local):
-                                data[name][name_local] = torch.cat((data[name][name_local], value_local), 0)
-                    elif isinstance(value, list):
-                        data[name].extend(value)
 
-        return data
-    def cat_data(self, data1, data2):
-        for name, value in data2.items():
-            if torch.is_tensor(value):
-                data1[name] = torch.cat((data1[name], value), 0)
-            elif isinstance(value, dict):
-                for name_local, value_local in value.items():
-                    if torch.is_tensor(value_local):
-                        data1[name][name_local] = torch.cat(
-                            (data1[name][name_local], value_local), 0)
-            elif isinstance(value, list):
-                data1[name].extend(value)
-
-        return data1
-    def cat_tuples(self, tuple1, tuple2):
-        list1 = list(tuple1)
-        list2 = list(tuple2)
-        list_all = list1.copy()
-        list_all.extend(list2)
-        list_all = list(set(list_all))
-        if "" in list_all:
-            list_all.remove("")
-        list_all = tuple(list_all)
-        return list_all
+    #####################################################################
+    # delete gradient manually
+    #####################################################################
     def manual_zero_grad(self, model):
         if self.meta_param['flag_manual_zero_grad'] == 'delete':
             for name, param in model.named_parameters():  # parameter grad_zero
@@ -1341,6 +1379,10 @@ class SimpleTrainer(TrainerBase):
                     if torch.sum(param.grad) > 0:
                         param.grad.zero_()
         # return model
+
+    #####################################################################
+    # detect anomaly
+    #####################################################################
     def _detect_anomaly(self, losses, loss_dict):
         if not torch.isfinite(losses).all():
             raise FloatingPointError(
@@ -1348,6 +1390,10 @@ class SimpleTrainer(TrainerBase):
                     self.iter, loss_dict
                 )
             )
+
+    #####################################################################
+    # about logger
+    #####################################################################
     def _write_metrics(self, metrics_dict: dict):
         """
         Args:

@@ -288,3 +288,23 @@ MetaBIN/
   ├── split_10d
   ```
 
+## 9) Code structure
+
+
+- Our code is based on fastreid [link](https://github.com/JDAI-CV/fast-reid)
+  
+- fastreid/config/defaults.py: default settings (parameters)
+- fastreid/data/datasets/: about datasets
+
+- tools/train_net.py: Main code (train/test/tsne/visualize)
+- fastreid/engine/defaults.py: build dataset, build model
+  - fastreid/data/build.py: build datasets (base model/meta-train/meta-test)
+  - fastreid/data/samplers/triplet_sampler.py: data sampler
+  - fastreid/modeling/meta_arch/metalearning.py: build model
+    - fastreid/modeling/backbones/mobilenet_v2.py or resnet.py: backbone network
+    - fastreid/heads/metalearning_head.py: head network (bnneck)
+  - fastreid/solver/build.py: build optimizer and scheduler
+- fastreid/engine/train_loop.py: main train code
+  - run_step_meta_learning1(): update base model
+  - run_step_meta_learning2(): update balancing parameters (meta-learning)
+  

@@ -31,7 +31,7 @@ class Metalearning(nn.Module):
         self.register_buffer("pixel_std", torch.tensor(cfg.MODEL.PIXEL_STD).view(1, -1, 1, 1))
 
         # backbone
-        self.backbone = build_backbone(cfg)
+        self.backbone = build_backbone(cfg) # resnet or mobilenet
 
         if self._cfg.MODEL.NORM.TYPE_BACKBONE == 'Task_norm':
             for module in self.backbone.modules():

@@ -23,6 +23,7 @@ _root = os.getenv("FASTREID_DATASETS", "datasets")
 
 def build_reid_train_loader(cfg):
 
+    # build datasets
     cfg = cfg.clone()
     frozen = cfg.is_frozen()
     cfg.defrost()
@@ -40,6 +41,7 @@ def build_reid_train_loader(cfg):
     else:
         num_workers = cfg.DATALOADER.NUM_WORKERS
 
+    # transforms
     train_transforms = build_transforms(cfg, is_train=True, is_fake=False)
     if (cfg.META.DATA.NAMES != "") and \
             (cfg.META.DATA.LOADER_FLAG == 'synth' or cfg.META.DATA.SYNTH_FLAG is not 'none'):
@@ -51,6 +53,8 @@ def build_reid_train_loader(cfg):
     train_items = list()
     domain_idx = 0
     camera_all = list()
+
+    # load datasets
     for d in cfg.DATASETS.NAMES:
         dataset = DATASET_REGISTRY.get(d)(root=_root, combineall=cfg.DATASETS.COMBINEALL)
         if comm.is_main_process():
@@ -72,7 +76,7 @@ def build_reid_train_loader(cfg):
         if individual_flag_ori or individual_flag_meta: # individual set
             train_set_all.append(dataset.train)
 
-    if cfg.DATALOADER.CAMERA_TO_DOMAIN:
+    if cfg.DATALOADER.CAMERA_TO_DOMAIN: # used for single-source DG
         num_domains = len(set(camera_all))
     else:
         num_domains = domain_idx
@@ -97,18 +101,18 @@ def build_reid_train_loader(cfg):
         cfg.META.DATA.MTEST_MINI_BATCH //= num_domains
 
 
-    if 'keypoint' in cfg.META.DATA.NAMES:
+    if 'keypoint' in cfg.META.DATA.NAMES: # used for keypoint (not used in MetaBIN)
         cfg, train_set_all = make_keypoint_data(cfg = cfg,
                                                 data_name = cfg.META.DATA.NAMES,
                                                 train_items = train_items)
 
     train_set = CommDataset(train_items, train_transforms, relabel=True)
-    if (synth_transforms is not None) and (cfg.META.DATA.NAMES != ""):
+    if (synth_transforms is not None) and (cfg.META.DATA.NAMES != ""): # used for synthetic (not used in MetaBIN)
         synth_set = CommDataset(train_items, synth_transforms, relabel=True)
 
 
 
-    if individual_flag_ori or individual_flag_meta:
+    if individual_flag_ori or individual_flag_meta: # for individual dataloader
         relabel_flag = False
         if individual_flag_meta:
             relabel_flag = cfg.META.DATA.RELABEL
@@ -125,7 +129,7 @@ def build_reid_train_loader(cfg):
         if cnt_data != len(train_set.img_items):
             print("data loading error, check build.py")
 
-    if individual_flag_ori:
+    if individual_flag_ori: # for individual dataloader (domain-wise)
         train_loader = []
         if len(train_set_all) > 0:
             for i, x in enumerate(train_set_all):
@@ -152,8 +156,8 @@ def build_reid_train_loader(cfg):
             cfg = cfg)
 
     train_loader_add = {}
-    train_loader_add['mtrain'] = None
-    train_loader_add['mtest'] = None
+    train_loader_add['mtrain'] = None # mtrain dataset
+    train_loader_add['mtest'] = None # mtest dataset
     if cfg.META.DATA.NAMES != "":
         if cfg.META.DATA.LOADER_FLAG == 'each': # "each": meta-init / meta-train / meta-test
             make_mtrain = True
@@ -175,7 +179,7 @@ def build_reid_train_loader(cfg):
         else:
             seed = None
 
-        if individual_flag_meta:
+        if individual_flag_meta: # for individual dataset (domain-wise)
             for i, x in enumerate(train_set_all):
                 if make_mtrain:
                     train_loader_add['mtrain'].append(make_sampler(
@@ -202,7 +206,7 @@ def build_reid_train_loader(cfg):
                         seed = seed,
                         cfg = cfg))
         else:
-            if make_mtrain:
+            if make_mtrain: # meta train dataset
                 train_loader_add['mtrain'] = make_sampler(
                     train_set=train_set,
                     num_batch=cfg.META.DATA.MTRAIN_MINI_BATCH,
@@ -214,7 +218,7 @@ def build_reid_train_loader(cfg):
                     flag2=cfg.META.DATA.DELETE_REM,
                     seed = seed,
                     cfg = cfg)
-            if make_mtest:
+            if make_mtest: # meta train dataset
                 if synth_transforms is None:
                     train_loader_add['mtest'] = make_sampler(
                         train_set=train_set,
