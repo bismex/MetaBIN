@@ -1,9 +1,18 @@
 # MetaBIN
 
-## 1) git clone
-
 `git clone our_repository`
-- If you can't clone our repository, you can download in this [link](https://drive.google.com/u/0/uc?id=1gA6mKuaadZPAw9MOJY9EKQCFKmng9cqr&export=download)
+- If you can't clone our repository, you can download it in this [[link](https://drive.google.com/u/0/uc?id=1gA6mKuaadZPAw9MOJY9EKQCFKmng9cqr&export=download)]
+
+## 1) Prerequisites
+
+- Ubuntu 18.04
+- Python 3.6
+- Pytorch 1.7+
+- NVIDIA GPU (>=8,000MiB)
+- Anaconda 4.8.3
+- CUDA 10.1 (optional)
+- Recent GPU driver (Need to support AMP [[link](https://pytorch.org/docs/stable/amp.html)])
+
 
 ## 2) Preparation
 
@@ -24,96 +33,29 @@ pip install matplotlib
 pip install pandas 
 pip install seaborn
 ```
-- Need 10.1 cuda version or higher
-- Need recent GPU drivers
-- (optional) `cd fastreid/evaluation/rank_cylib; make all`
 
-## 3) Check repository structure
-```
-MetaBIN/
-├── configs/
-├── datasets/ (*need to download and connect it by symbolic link [check section 4]*)
-│   ├── *cuhk02
-│   ├── *cuhk03
-│   ├── *CUHK-SYSU
-│   ├── *DukeMTMC-reID
-│   ├── *GRID
-│   ├── *Market-1501-v15.09.15
-│   ├── *prid_2011
-│   ├── *QMUL-iLIDS
-│   ├── *viper
-├── demo/
-├── fastreid/
-├── *logs/ (*need to make logs folder and connect it by symbolic link [check section 5]*)
-├── *pretrained/ (*need to make logs folder and connect it by symbolic link [check section 5]*)
-├── tests/
-├── tools/
-'*' means symbolic links which you make (check below sections) 
-```
-
-## 4) download dataset and connect it
-
-- Download dataset
-  - For single-source DG
-    - Need to download Market1501, DukeMTMC-REID [check section 8-1,2]
-  - For multi-source DG
-    - Training: Market1501, DukeMTMC-REID, CUHK02, CUHK03, CUHK-SYSU [check section 8-1,2,3,4,5]
-    - Testing: GRID, PRID, QMUL i-LIDS, VIPer [check section 8-6,7,8,9]
-- Symbolic link (recommended)
-  - Check `symbolic_link_dataset.sh`
-  - Modify each directory (need to change)
-  - `cd MetaBIN`
-  - `bash symbolic_link_dataset.sh`
+## 3) Test only
   
-- Direct connect (not recommended)
-  - If you don't want to make symbolic link, move each dataset folder into `./datasets/`
-  - Check the name of dataset folders
-
-## 5) Create pretrained and logs folder
-
-- Symbolic link (recommended)
-  - Make 'MetaBIN(logs)' and 'MetaBIN(pretrained)' folder outside MetaBIN
+- Download our model [[link]()] to `MetaBIN/logs/Sample/mobilenet`
 ```
-├── MetaBIN
-│   ├── configs/
-│   ├── ....
-│   ├── tools/
-├── MetaBIN(logs)
-├── MetaBIN(pretrained)
-```
-  - `cd MetaBIN`
-  - `bash symbolic_link_others.sh`
-  - Download pretrained models [link](https://drive.google.com/u/0/uc?export=download&confirm=fOlf&id=1sIRHZFgnNIw1CEXq_CjSMwQyCWJzELWK) and move them on the folder `MetaBIN/pretrained/` 
-  - If the above link does not work, (optional)
-    - Download pretrained models and change name 
-      - mobilenetv2_x1_0: [[link](https://mega.nz/#!NKp2wAIA!1NH1pbNzY_M2hVk_hdsxNM1NUOWvvGPHhaNr-fASF6c)]
-      - mobilenetv2_x1_4: [[link](https://mega.nz/#!RGhgEIwS!xN2s2ZdyqI6vQ3EwgmRXLEW3khr9tpXg96G9SUJugGk)]
-      - change name as `mobilenetv2_1.0.pth`, `mobilenetv2_1.4.pth`
-
-- Direct connect (not recommended)
-  - Make 'pretrained' and 'logs' folder in `MetaBIN`
-  - Move the pretrained models to `pretrained`
-  
-
-## 6) Test only
-  
-- Download our model [link](https://drive.google.com/u/0/uc?export=download&confirm=9cvk&id=1mpFkZVAH4fb0s_8L9NRx54iG3Bxaa3CK) to `MetaBIN/logs/Sample/mobilenet`
-```
-├── MetaBIN/logs/Sample/
+├── MetaBIN/logs/Sample/mobilenet
 │   ├── last_checkpoint
 │   ├── model_0099999.pth
 │   ├── result.png
 ```
 
-- Doanload test datasets [link](https://drive.google.com/u/0/uc?export=download&confirm=nmTp&id=1l5QX8x0tEM5F-nG5ypaoHJSPZYYBUNYP) to `MetaBIN/datasets/`
-  - Please check section 4, 8
+- Download test datasets [[link]()] to `MetaBIN/datasets/`
+```
+├── MetaBIN/datasets
+│   ├── GRID
+│   ├── prid_2011
+│   ├── QMUL-iLIDS
+│   ├── viper
+```
 
-- Doanload pretrained model [link](https://drive.google.com/u/0/uc?export=download&confirm=fOlf&id=1sIRHZFgnNIw1CEXq_CjSMwQyCWJzELWK) to `MetaBIN/pretrained/`
-  - Please check section 5
-
-- run 
+- Execute run_file
 `cd MetaBIN/`
-`python3 ./tools/train_net.py --config-file ./configs/Sample/mobilenet.yml --eval-only --resume`
+`sh run_evaluate.sh`
 
 - you can get the following results
 
@@ -130,7 +72,75 @@ MetaBIN/
 | ** all_average **         | 64.69%   | 81.44%   | 86.86%    | 72.34% | 72.34% | 0.00%            | 0.00%           | 61.11%         |
 
 
+---
 
+# Advanced (train new models)
+
+## 4) Check the below repository structure
+```
+MetaBIN/
+├── configs/
+├── datasets/ (*need to download and connect it by symbolic link [check section 4], please check the folder name*)
+│   ├── *cuhk02
+│   ├── *cuhk03
+│   ├── *CUHK-SYSU
+│   ├── *DukeMTMC-reID
+│   ├── *GRID
+│   ├── *Market-1501-v15.09.15
+│   ├── *prid_2011
+│   ├── *QMUL-iLIDS
+│   ├── *viper
+├── demo/
+├── fastreid/
+├── logs/ 
+├── pretrained/ 
+├── tests/
+├── tools/
+'*' means symbolic links which you make (check below sections) 
+```
+
+## 5) download dataset and connect it
+
+- Download dataset
+  - For single-source DG
+    - Need to download Market1501, DukeMTMC-REID [check section 8-1,2]
+  - For multi-source DG
+    - Training: Market1501, DukeMTMC-REID, CUHK02, CUHK03, CUHK-SYSU [check section 8-1,2,3,4,5]
+    - Testing: GRID, PRID, QMUL i-LIDS, VIPer [check section 8-6,7,8,9]
+
+- Symbolic link (recommended)
+  - Check `symbolic_link_dataset.sh`
+  - Modify each directory (need to change)
+  - `cd MetaBIN`
+  - `bash symbolic_link_dataset.sh`
+  
+- Direct connect (not recommended)
+  - If you don't want to make symbolic link, move each dataset folder into `./datasets/`
+  - Check the folder name for each dataset
+
+## 6) Create pretrained and logs folder
+
+- Symbolic link (recommended)
+  - Make 'MetaBIN(logs)' and 'MetaBIN(pretrained)' folder outside MetaBIN
+```
+├── MetaBIN
+│   ├── configs/
+│   ├── ....
+│   ├── tools/
+├── MetaBIN(logs)
+├── MetaBIN(pretrained)
+```
+  - `cd MetaBIN`
+  - `bash symbolic_link_others.sh`
+  - Download pretrained models and change name 
+    - mobilenetv2_x1_0: [[link](https://mega.nz/#!NKp2wAIA!1NH1pbNzY_M2hVk_hdsxNM1NUOWvvGPHhaNr-fASF6c)]
+    - mobilenetv2_x1_4: [[link](https://mega.nz/#!RGhgEIwS!xN2s2ZdyqI6vQ3EwgmRXLEW3khr9tpXg96G9SUJugGk)]
+    - change name as `mobilenetv2_1.0.pth`, `mobilenetv2_1.4.pth`
+
+- Direct connect (not recommended)
+  - Make 'pretrained' and 'logs' folder in `MetaBIN`
+  - Move the pretrained models to `pretrained`
+  
 
 ## 7) Train
 
@@ -308,4 +318,17 @@ MetaBIN/
 - fastreid/engine/train_loop.py: main train code
   - run_step_meta_learning1(): update base model
   - run_step_meta_learning2(): update balancing parameters (meta-learning)
-  
+
+
+## 10) Handling errors
+
+- AMP
+  - If the version of your GPU driver is old, you cannot use AMP(automatic mixed precision).
+  - If so, modify the AMP option to False in `/MetaBIN/configs/Sample/mobilenet.yml` 
+  - The memory usage will increase.
+- Fastreid evaluation
+  - If a compile error occurs in fastreid, run the following command.
+  - `cd fastreid/evaluation/rank_cylib; make all`
+- Please check `logs`
+- Please check `pretrained` 
+- Please check `datasets` 
