@@ -31,7 +31,7 @@ class _ColorfulFormatter(logging.Formatter):
 
 @functools.lru_cache()  # so that calling setup_logger multiple times won't add many handlers
 def setup_logger(
-        output=None, distributed_rank=0, *, color=True, name="fastreid", abbrev_name=None
+        output=None, distributed_rank=0, *, color=True, name="fastreid", abbrev_name=None, tmp = ''
 ):
     """
     Args:
@@ -75,7 +75,10 @@ def setup_logger(
         if output.endswith(".txt") or output.endswith(".log"):
             filename = output
         else:
-            filename = os.path.join(output, "log.txt")
+            if tmp == '':
+                filename = os.path.join(output, "log.txt".format(tmp))
+            else:
+                filename = os.path.join(output, "log_{}.txt".format(tmp))
         if distributed_rank > 0:
             filename = filename + ".rank{}".format(distributed_rank)
         PathManager.mkdirs(os.path.dirname(filename))

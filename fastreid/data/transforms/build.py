@@ -10,7 +10,7 @@ from .transforms import *
 from .autoaugment import AutoAugment
 
 
-def build_transforms(cfg, is_train=True):
+def build_transforms(cfg, is_train=True, is_fake=False):
     res = []
 
     if is_train:
@@ -64,6 +64,14 @@ def build_transforms(cfg, is_train=True):
             res.append(RandomErasing(probability=rea_prob, mean=rea_mean))
         if do_rpt:
             res.append(RandomPatch(prob_happen=rpt_prob))
+        if is_fake:
+            if cfg.META.DATA.SYNTH_FLAG == 'jitter':
+                res.append(T.RandomApply([T.ColorJitter(cj_brightness, cj_contrast, cj_saturation, cj_hue)], p=1.0))
+            elif cfg.META.DATA.SYNTH_FLAG == 'augmix':
+                res.append(AugMix())
+            elif cfg.META.DATA.SYNTH_FLAG == 'both':
+                res.append(T.RandomApply([T.ColorJitter(cj_brightness, cj_contrast, cj_saturation, cj_hue)], p=cj_prob))
+                res.append(AugMix())
     else:
         size_test = cfg.INPUT.SIZE_TEST
         res.append(T.Resize(size_test, interpolation=3))

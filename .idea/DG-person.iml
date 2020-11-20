@@ -16,6 +16,7 @@
       <excludeFolder url="file://$MODULE_DIR$/datasets/veri" />
       <excludeFolder url="file://$MODULE_DIR$/datasets/veri_keypoint" />
       <excludeFolder url="file://$MODULE_DIR$/datasets/viper" />
+      <excludeFolder url="file://$MODULE_DIR$/logs" />
     </content>
     <orderEntry type="jdk" jdkName="Python 3.6 (seokeon_reid)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />

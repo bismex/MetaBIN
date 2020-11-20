@@ -9,6 +9,12 @@ import time
 import math
 import copy
 
+from .switchable_norm import *
+from .syncsn_layer import SyncSwitchableNorm2d
+from .syncbn_layer import SyncBatchNorm2d
+from .DSON import OptimizedNorm2d, OptimizedNorm2d_ch
+from .task_norm import TaskNormI
+
 # class meta_linear(nn.Linear):
 #     def __init__(self, in_feat, reduction_dim, bias = False):
 #         super().__init__(in_feat, reduction_dim, bias = bias)
@@ -470,6 +476,10 @@ class Meta_bin_gate_ver2(nn.Module):
 
         return out
 
+
+
+
+
 def update_parameter(param, step_size, opt = None):
     loss = opt['meta_loss']
     use_second_order = opt['use_second_order']
@@ -530,5 +540,11 @@ def meta_norm(norm, out_channels, norm_opt, **kwargs):
             "BIN_half": Meta_bin_half(out_channels, norm_opt, **kwargs),
             "BIN_gate1": Meta_bin_gate_ver1(out_channels, norm_opt, **kwargs),
             "BIN_gate2": Meta_bin_gate_ver2(out_channels, norm_opt, **kwargs),
+            "Task_norm": TaskNormI(out_channels),
+            "DSON_ch": OptimizedNorm2d_ch(out_channels),
+            "DSON": OptimizedNorm2d(out_channels),
+            "Switchable_norm": SwitchNorm2d(out_channels),
+            "Sync_bn": SyncBatchNorm2d(out_channels),
+            "Sync_sn": SyncSwitchableNorm2d(out_channels),
         }[norm]
     return norm

@@ -17,6 +17,11 @@ from fastreid.engine import DefaultTrainer, default_argument_parser, default_set
 from fastreid.utils.checkpoint import Checkpointer
 from fastreid.engine import hooks
 from fastreid.evaluation import ReidEvaluator
+from fastreid.utils.file_io import PathManager
+import torch
+import numpy as np
+import random
+import glob
 
 
 class Trainer(DefaultTrainer):
@@ -45,25 +50,80 @@ def setup(args):
 
     cfg.merge_from_list(args.opts)
     cfg.freeze()
-    default_setup(cfg, args)
+
+    if args.eval_only or args.dist_only or args.tsne_only or args.domain_only:
+        if args.eval_only:
+            tmp = 'eval'
+        if args.dist_only:
+            tmp = 'dist'
+        if args.tsne_only:
+            tmp = 'tsne'
+        if args.domain_only:
+            tmp = 'domain'
+        default_setup(cfg, args, tmp=tmp)
+    else:
+        default_setup(cfg, args)
     return cfg
 
 def main(args):
     cfg = setup(args)
+    logger = logging.getLogger("fastreid.trainer")
 
-    if args.eval_only:
-        logger = logging.getLogger("fastreid.trainer")
+    if cfg.META.SOLVER.MANUAL_SEED_FLAG:
+        random_seed = cfg.META.SOLVER.MANUAL_SEED_NUMBER
+        torch.manual_seed(random_seed)
+        torch.cuda.manual_seed(random_seed)
+        torch.cuda.manual_seed_all(random_seed)  # if use multi-GPU
+        if cfg.META.SOLVER.MANUAL_SEED_DETERMINISTIC:
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
+        np.random.seed(random_seed)
+        random.seed(random_seed)
+        logger.info("Using a generated random seed {}".format(cfg.META.SOLVER.MANUAL_SEED_NUMBER))
+
+
+
+    # cfg.MODEL.WEIGHTS = "./logs/Visualize/u01/model_final.pth"
+    # Trainer.resume_or_load(cfg.MODEL.WEIGHTS, resume=args.resume)
+    if args.eval_only or args.dist_only or args.tsne_only or args.domain_only:
         cfg.defrost()
         cfg.MODEL.BACKBONE.PRETRAIN = False
         model = Trainer.build_model(cfg)
+        res = []
 
-        cfg.MODEL.WEIGHTS = "./logs/Visualize/u01/model_final.pth"
-        # Trainer.resume_or_load(cfg.MODEL.WEIGHTS, resume=args.resume)
-        Checkpointer(model).load(cfg.MODEL.WEIGHTS)  # load trained model
+        if cfg.MODEL.WEIGHTS is not "":
+            Checkpointer(model).load(cfg.MODEL.WEIGHTS)  # load trained model
+
+        if args.resume:
+            save_file = os.path.join(cfg.OUTPUT_DIR, "last_checkpoint")
+            with PathManager.open(save_file, "r") as f:
+                last_saved = f.read().strip()
+            path = os.path.join(cfg.OUTPUT_DIR, last_saved)
+            Checkpointer(model).load(path)
+            logger.info("load: {}".format(path))
+
+        if args.num_pth > 0:
+            list_pth = glob.glob(os.path.join(cfg.OUTPUT_DIR, '*.pth'))
+            list_pth = sorted(list_pth)
+            Checkpointer(model).load(list_pth[args.num_pth-1])
+            logger.info("load pth number: {}".format(args.num_pth-1))
+            logger.info("load: {}".format(list_pth[args.num_pth-1]))
 
 
-        res = Trainer.visualize(cfg, model)
-        # res = Trainer.test(cfg, model)
+        if args.eval_only:
+            res = Trainer.test(cfg, model)
+
+        if args.tsne_only:
+            cfg.TEST.IMS_PER_BATCH = 256
+            res = Trainer.visualize(cfg, model)
+
+        if args.dist_only:
+            cfg.TEST.IMS_PER_BATCH = 256
+            res = Trainer.test_distance(cfg, model)
+
+        if args.domain_only:
+            cfg.TEST.IMS_PER_BATCH = 256
+            res = Trainer.domain_distance(cfg, model)
 
         return res
 

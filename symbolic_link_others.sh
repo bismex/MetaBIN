@@ -1,2 +1,2 @@
-ln -sf ../DG-person\(logs\)/ ./logs
-ln -sf ../DG-person\(pretrained\)/ ./pretrained
+ln -sf ../MetaBIN\(logs\)/ ./logs
+ln -sf ../MetaBIN\(pretrained\)/ ./pretrained

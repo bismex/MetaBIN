@@ -9,7 +9,7 @@ import torch.nn.functional as F
 import copy
 
 from fastreid.utils import comm
-from .utils import concat_all_gather, euclidean_dist, normalize
+from .utils import concat_all_gather, euclidean_dist, normalize, cosine_dist
 
 
 def softmax_weights(dist, mask):
@@ -43,28 +43,31 @@ def hard_example_mining(dist_mat, is_pos, is_neg):
     # `dist_ap` means distance(anchor, positive)
     # both `dist_ap` and `relative_p_inds` with shape [N, 1]
 
-    dist_ap, relative_p_inds = torch.max(
-        dist_mat[is_pos].contiguous().view(N, -1), 1, keepdim=True)
-    dist_ap = dist_ap.squeeze(1)
+    # try:
 
+    # dist_ap, relative_p_inds = torch.max(
+    #     dist_mat[is_pos].contiguous().view(N, -1), 1, keepdim=True)
+    # dist_ap = dist_ap.squeeze(1)
 
-    # dist_ap = list()
-    # for i in range(dist_mat.shape[0]):
-    #     dist_ap.append(torch.max(dist_mat[i][is_pos[i]]))
-    # dist_ap = torch.stack(dist_ap)
+    #
+    dist_ap = list()
+    for i in range(dist_mat.shape[0]):
+        dist_ap.append(torch.max(dist_mat[i][is_pos[i]]))
+    dist_ap = torch.stack(dist_ap)
 
     # `dist_an` means distance(anchor, negative)
     # both `dist_an` and `relative_n_inds` with shape [N, 1]
 
+    dist_an = list()
+    for i in range(dist_mat.shape[0]):
+        dist_an.append(torch.min(dist_mat[i][is_neg[i]]))
+    dist_an = torch.stack(dist_an)
+    # dist_an, relative_n_inds = torch.min(
+    #     dist_mat[is_neg].contiguous().view(N, -1), 1, keepdim=True)
+    # dist_an = dist_an.squeeze(1)
+    # except:
+    #     print('.')
 
-    dist_an, relative_n_inds = torch.min(
-        dist_mat[is_neg].contiguous().view(N, -1), 1, keepdim=True)
-    dist_an = dist_an.squeeze(1)
-
-    # dist_an = list()
-    # for i in range(dist_mat.shape[0]):
-    #     dist_an.append(torch.min(dist_mat[i][is_neg[i]]))
-    # dist_an = torch.stack(dist_an)
 
 
     # shape [N]
@@ -98,7 +101,7 @@ def weighted_example_mining(dist_mat, is_pos, is_neg):
     return dist_ap, dist_an
 
 
-def triplet_loss(embedding, targets, margin, norm_feat, hard_mining, domain_labels = None, pos_flag = [1,0,0], neg_flag = [0,0,1]):
+def triplet_loss(embedding, targets, margin, norm_feat, hard_mining, dist_type, loss_type, domain_labels = None, pos_flag = [1,0,0], neg_flag = [0,0,1]):
     r"""Modified from Tong Xiao's open-reid (https://github.com/Cysu/open-reid).
     Related Triplet Loss theory can be found in paper 'In Defense of the Triplet
     Loss for Person Re-Identification'."""
@@ -113,7 +116,10 @@ def triplet_loss(embedding, targets, margin, norm_feat, hard_mining, domain_labe
         all_embedding = embedding
         all_targets = targets
 
-    dist_mat = euclidean_dist(all_embedding, all_embedding)
+    if dist_type == 'euclidean':
+        dist_mat = euclidean_dist(all_embedding, all_embedding)
+    elif dist_type == 'cosine':
+        dist_mat = cosine_dist(all_embedding, all_embedding)
 
     N = dist_mat.size(0)
     if (pos_flag == [1,0,0] and neg_flag == [0,1,1]) or domain_labels == None:
@@ -162,10 +168,13 @@ def triplet_loss(embedding, targets, margin, norm_feat, hard_mining, domain_labe
         # all(sum(is_pos) == 1)
         loss = F.margin_ranking_loss(dist_an, dist_ap, y, margin=margin)
     else:
-        loss = F.soft_margin_loss(dist_an - dist_ap, y)
-        # fmt: off
-        if loss == float('Inf'): loss = F.margin_ranking_loss(dist_an, dist_ap, y, margin=0.3)
-        # fmt: on
+        if loss_type == 'logistic':
+            loss = F.soft_margin_loss(dist_an - dist_ap, y)
+            # fmt: off
+            if loss == float('Inf'): loss = F.margin_ranking_loss(dist_an, dist_ap, y, margin=0.3)
+            # fmt: on
+        elif loss_type == 'hinge':
+            loss = F.margin_ranking_loss(dist_an, dist_ap, y, margin=margin)
 
     return loss
 

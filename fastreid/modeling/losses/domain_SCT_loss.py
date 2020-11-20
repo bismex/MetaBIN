@@ -14,12 +14,9 @@ def domain_SCT_loss(embedding, domain_labels, norm_feat, type):
     # eps=1e-05
     if norm_feat: embedding = normalize(embedding, axis=-1)
     unique_label = torch.unique(domain_labels)
-    embedding_all = []
+    embedding_all = list()
     for i, x in enumerate(unique_label):
-        if i == 0:
-            embedding_all = embedding[x == domain_labels].unsqueeze(0)
-        else:
-            embedding_all = torch.cat((embedding_all, embedding[x == domain_labels].unsqueeze(0)), dim=0)
+        embedding_all.append(embedding[x == domain_labels])
     num_domain = len(embedding_all)
     loss_all = []
     for i in range(num_domain):

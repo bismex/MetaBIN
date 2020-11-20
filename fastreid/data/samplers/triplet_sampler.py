@@ -112,7 +112,7 @@ class NaiveIdentitySampler(Sampler):
     - batch_size (int): number of examples in a batch.
     """
 
-    def __init__(self, data_source: str, batch_size: int, num_instances: int, delete_rem: bool, seed: Optional[int] = None):
+    def __init__(self, data_source: str, batch_size: int, num_instances: int, delete_rem: bool, seed: Optional[int] = None, cfg = None):
         self.data_source = data_source
         self.batch_size = batch_size
         self.num_instances = num_instances
@@ -219,7 +219,7 @@ class NaiveIdentitySampler(Sampler):
 
 class DomainSuffleSampler(Sampler):
 
-    def __init__(self, data_source: str, batch_size: int, num_instances: int, delete_rem: bool, seed: Optional[int] = None):
+    def __init__(self, data_source: str, batch_size: int, num_instances: int, delete_rem: bool, seed: Optional[int] = None, cfg = None):
         self.data_source = data_source
         self.batch_size = batch_size
         self.num_instances = num_instances
@@ -231,8 +231,12 @@ class DomainSuffleSampler(Sampler):
         self.pid_index = defaultdict(list)
 
         for index, info in enumerate(data_source):
-            pid = info[1]
+
             domainid = info[3]['domains']
+            if cfg.DATALOADER.CAMERA_TO_DOMAIN:
+                pid = info[1] + str(domainid)
+            else:
+                pid = info[1]
             self.index_pid[index] = pid
             # self.pid_domain[pid].append(domainid)
             self.pid_domain[pid] = domainid

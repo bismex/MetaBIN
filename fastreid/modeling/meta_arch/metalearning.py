@@ -9,6 +9,8 @@ from torch import nn
 from fastreid.modeling.backbones import build_backbone
 from fastreid.modeling.heads import build_reid_heads
 from fastreid.modeling.losses import *
+
+from fastreid.modeling.ops import TaskNormI
 # from fastreid.modeling.losses.utils import log_accuracy
 from .build import META_ARCH_REGISTRY
 import copy
@@ -30,6 +32,13 @@ class Metalearning(nn.Module):
 
         # backbone
         self.backbone = build_backbone(cfg)
+
+        if self._cfg.MODEL.NORM.TYPE_BACKBONE == 'Task_norm':
+            for module in self.backbone.modules():
+                if isinstance(module, TaskNormI):
+                    module.register_extra_weights()
+
+
         self.heads = build_reid_heads(cfg)
 
     @property
@@ -44,7 +53,7 @@ class Metalearning(nn.Module):
             outs = dict()
             assert "targets" in batched_inputs, "Person ID annotation are missing in training!"
             outs['targets'] = batched_inputs["targets"].long().to(self.device)
-            if self.other_dataset:
+            if 'others' in batched_inputs.keys():
                 assert "others" in batched_inputs, "View ID annotation are missing in training!"
                 assert "domains" in batched_inputs['others'], "View ID annotation are missing in training!"
                 outs['domains'] = batched_inputs['others']['domains'].long().to(self.device)
@@ -83,6 +92,7 @@ class Metalearning(nn.Module):
         pooled_features   = outputs['pooled_features']
         bn_features       = outputs['bn_features']
 
+        # print(gt_labels)
 
         loss_names = opt['loss']
         loss_dict = {}
@@ -141,6 +151,8 @@ class Metalearning(nn.Module):
                 self._cfg.MODEL.LOSSES.TRI.MARGIN,
                 self._cfg.MODEL.LOSSES.TRI.NORM_FEAT,
                 self._cfg.MODEL.LOSSES.TRI.HARD_MINING,
+                self._cfg.MODEL.LOSSES.TRI.DIST_TYPE,
+                self._cfg.MODEL.LOSSES.TRI.LOSS_TYPE,
                 domain_labels,
                 self._cfg.MODEL.LOSSES.TRI.NEW_POS,
                 self._cfg.MODEL.LOSSES.TRI.NEW_NEG,
@@ -154,6 +166,8 @@ class Metalearning(nn.Module):
                 self._cfg.MODEL.LOSSES.TRI_ADD.MARGIN,
                 self._cfg.MODEL.LOSSES.TRI_ADD.NORM_FEAT,
                 self._cfg.MODEL.LOSSES.TRI_ADD.HARD_MINING,
+                self._cfg.MODEL.LOSSES.TRI_ADD.DIST_TYPE,
+                self._cfg.MODEL.LOSSES.TRI_ADD.LOSS_TYPE,
                 domain_labels,
                 self._cfg.MODEL.LOSSES.TRI_ADD.NEW_POS,
                 self._cfg.MODEL.LOSSES.TRI_ADD.NEW_NEG,
@@ -167,6 +181,8 @@ class Metalearning(nn.Module):
                 self._cfg.MODEL.LOSSES.TRI_MTRAIN.MARGIN,
                 self._cfg.MODEL.LOSSES.TRI_MTRAIN.NORM_FEAT,
                 self._cfg.MODEL.LOSSES.TRI_MTRAIN.HARD_MINING,
+                self._cfg.MODEL.LOSSES.TRI_MTRAIN.DIST_TYPE,
+                self._cfg.MODEL.LOSSES.TRI_MTRAIN.LOSS_TYPE,
                 domain_labels,
                 self._cfg.MODEL.LOSSES.TRI_MTRAIN.NEW_POS,
                 self._cfg.MODEL.LOSSES.TRI_MTRAIN.NEW_NEG,
@@ -180,6 +196,8 @@ class Metalearning(nn.Module):
                 self._cfg.MODEL.LOSSES.TRI_MTEST.MARGIN,
                 self._cfg.MODEL.LOSSES.TRI_MTEST.NORM_FEAT,
                 self._cfg.MODEL.LOSSES.TRI_MTEST.HARD_MINING,
+                self._cfg.MODEL.LOSSES.TRI_MTEST.DIST_TYPE,
+                self._cfg.MODEL.LOSSES.TRI_MTEST.LOSS_TYPE,
                 domain_labels,
                 self._cfg.MODEL.LOSSES.TRI_MTEST.NEW_POS,
                 self._cfg.MODEL.LOSSES.TRI_MTEST.NEW_NEG,
