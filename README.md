@@ -1,7 +1,7 @@
 # MetaBIN
 
 `git clone our_repository`
-- If you can't clone our repository, you can download it in this [[link](https://drive.google.com/u/0/uc?id=1gA6mKuaadZPAw9MOJY9EKQCFKmng9cqr&export=download)]
+- If you can't clone our repository, you can download it in this [[link](https://drive.google.com/u/0/uc?id=1Z7n_AE-MB4RZjXAaLxFeNbensGjOY2-J&export=download)]
 
 ## 1) Prerequisites
 
@@ -36,7 +36,7 @@ pip install seaborn
 
 ## 3) Test only
   
-- Download our model [[link]()] to `MetaBIN/logs/Sample/mobilenet`
+- Download our model [[link](https://drive.google.com/u/0/uc?id=1loGf1Udrp7t2Gn_Hi5l_SPuuHu7vg03C&export=download)] to `MetaBIN/logs/Sample/mobilenet`
 ```
 ├── MetaBIN/logs/Sample/mobilenet
 │   ├── last_checkpoint
@@ -44,7 +44,7 @@ pip install seaborn
 │   ├── result.png
 ```
 
-- Download test datasets [[link]()] to `MetaBIN/datasets/`
+- Download test datasets [[link](https://drive.google.com/u/0/uc?id=1sKTv52366vE7zpdJYQsFW062_6BxDgOy&export=download)] to `MetaBIN/datasets/`
 ```
 ├── MetaBIN/datasets
 │   ├── GRID
@@ -136,6 +136,7 @@ MetaBIN/
     - mobilenetv2_x1_0: [[link](https://mega.nz/#!NKp2wAIA!1NH1pbNzY_M2hVk_hdsxNM1NUOWvvGPHhaNr-fASF6c)]
     - mobilenetv2_x1_4: [[link](https://mega.nz/#!RGhgEIwS!xN2s2ZdyqI6vQ3EwgmRXLEW3khr9tpXg96G9SUJugGk)]
     - change name as `mobilenetv2_1.0.pth`, `mobilenetv2_1.4.pth`
+  - Or download pretrained models [[link](https://drive.google.com/u/0/uc?id=1o-MqjM1YBeUoZB5mNlGiB6LVSIA2RV71&export=download)]
 
 - Direct connect (not recommended)
   - Make 'pretrained' and 'logs' folder in `MetaBIN`
