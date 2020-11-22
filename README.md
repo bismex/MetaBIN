@@ -1,7 +1,7 @@
 # MetaBIN
 
 `git clone our_repository`
-- If you can't clone our repository, you can download it in this [[link]()]
+- If you can't clone our repository, you can download it in this [[link](https://drive.google.com/u/0/uc?id=1hcHh52TR6glihkOvfVKBewXbtPPKWSEZ&export=download)]
 
 ## 1) Prerequisites
 
