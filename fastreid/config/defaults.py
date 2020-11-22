@@ -29,15 +29,15 @@ _C.META.BOTTLENECK.REDUCTION_DIM = 1024
 _C.META.BOTTLENECK.NORM = True # norm after bottleneck layer
 
 _C.META.DATA = CN()
-_C.META.DATA.NAMES = "DG" # 'VeRi_keypoint_each_4', 'DG'
+_C.META.DATA.NAMES = "DG" # 'DG', ''
 _C.META.DATA.LOADER_FLAG = 'diff' # "each"(3), "diff"(2), "same"(1)
-_C.META.DATA.SYNTH_FLAG = 'none' # "none","jitter","augmix","both"
-_C.META.DATA.SYNTH_METHOD = 'real' # based on mtrain ("real", "fake", "alter", "both")
+_C.META.DATA.SYNTH_FLAG = 'none' # "none","jitter","augmix","both" (not used)
+_C.META.DATA.SYNTH_METHOD = 'real' # based on mtrain ("real", "fake", "alter", "both") (not used)
 _C.META.DATA.SYNTH_SAME_SEED = False
 # "each": meta-init / meta-train / meta-test
 # "diff": meta-init / meta-final
 # "same": meta-init
-_C.META.DATA.NUM_DOMAINS = 5 # don't care, automatically changed
+_C.META.DATA.NUM_DOMAINS = 5 # don't care, automatically changed (total domains)
 _C.META.DATA.RELABEL = False # False-> num_classes is shared considering total numbers
 
 # enable when LOADER_FLAG is 'each' or 'diff'
@@ -49,45 +49,49 @@ _C.META.DATA.WHOLE = True
 
 _C.META.DATA.MTRAIN_MINI_BATCH = 80 # should be a multiply of num_domain x num_instance
 _C.META.DATA.MTRAIN_NUM_INSTANCE = 4
+# when dataloaders are divided into mtrain and mtest, it works
 _C.META.DATA.MTEST_MINI_BATCH = 80 # should be a multiply of num_domain x num_instance
 _C.META.DATA.MTEST_NUM_INSTANCE = 4
 
 _C.META.MODEL = CN()
-_C.META.MODEL.META_UPDATE_LAYER = ("backbone_bn_gate",) # "bottleneck","classifier","bnneck","pooling",
-_C.META.MODEL.META_COMPUTE_LAYER = ("backbone_bn_gate",) # "bottleneck","classifier","bnneck","pooling",
-_C.META.MODEL.ALL_PARAMS = False # for MLDG
+_C.META.MODEL.META_UPDATE_LAYER = ("backbone_bn_gate",)  # ("",) when MLDG
+_C.META.MODEL.META_COMPUTE_LAYER = ("backbone_bn_gate",) # ("",) when MLDG
+_C.META.MODEL.ALL_PARAMS = False # True when MLDG
 
 _C.META.SOLVER = CN()
 _C.META.SOLVER.LR_FACTOR = CN()
-_C.META.SOLVER.LR_FACTOR.GATE = 10.0
-_C.META.SOLVER.LR_FACTOR.META = 0.0
-_C.META.SOLVER.LR_FACTOR.GATE_CYCLIC_RATIO = 10.0
-_C.META.SOLVER.LR_FACTOR.GATE_CYCLIC_PERIOD_PER_EPOCH = 0.2
-_C.META.SOLVER.LR_FACTOR.META_CYCLIC_RATIO = 10.0
-_C.META.SOLVER.LR_FACTOR.META_CYCLIC_PERIOD_PER_EPOCH = 0.2
-_C.META.SOLVER.LR_FACTOR.META_CYCLIC_UP_RATIO = 0.5
-_C.META.SOLVER.LR_FACTOR.META_CYCLIC_MIDDLE_LR = 0.01
-_C.META.SOLVER.LR_FACTOR.META_CYCLIC_NEW = True
+_C.META.SOLVER.LR_FACTOR.GATE = 10.0 # learning ratio of balancing paramter (10-> baselr x 10)
+_C.META.SOLVER.LR_FACTOR.GATE_CYCLIC_RATIO = 10.0 # not used
+_C.META.SOLVER.LR_FACTOR.GATE_CYCLIC_PERIOD_PER_EPOCH = 0.2 # not used
+_C.META.SOLVER.LR_FACTOR.META = 0.0 # cyclic inner updates when 0.0
+_C.META.SOLVER.LR_FACTOR.META_CYCLIC_RATIO = 10.0 # [middle_lr / ratio, middle_lr x ratio]
+_C.META.SOLVER.LR_FACTOR.META_CYCLIC_PERIOD_PER_EPOCH = 0.2 # period per epoch
+_C.META.SOLVER.LR_FACTOR.META_CYCLIC_UP_RATIO = 0.5 # 1 means only up, 0 means only down
+_C.META.SOLVER.LR_FACTOR.META_CYCLIC_MIDDLE_LR = 0.01 # middle lr 
+_C.META.SOLVER.LR_FACTOR.META_CYCLIC_NEW = True # always true
 
 _C.META.SOLVER.INIT = CN()
-_C.META.SOLVER.INIT.FIRST_INNER_LOOP = 10 # basic init training depends on total iteration
-_C.META.SOLVER.INIT.INNER_LOOP = 1 # basic init training depends on total iteration
-_C.META.SOLVER.INIT.OUTER_LOOP = 1 # meta-training
-_C.META.SOLVER.INIT.TYPE_RUNNING_STATS = "general" # "general", "hold", "eval"
+_C.META.SOLVER.INIT.FIRST_INNER_LOOP = 10 # for training stability
+_C.META.SOLVER.INIT.INNER_LOOP = 1 # basic model update
+_C.META.SOLVER.INIT.OUTER_LOOP = 1 # meta-learning
+_C.META.SOLVER.INIT.TYPE_RUNNING_STATS = "general" # "general", "hold", "eval" 
+# general-> w,b is trained, running_stats are updated
+# hold-> w,b is trained, running_stats are stopped
+# eval-> w,b is not trained, running_stats are applied
 
 _C.META.SOLVER.MTRAIN = CN()
 _C.META.SOLVER.MTRAIN.INNER_LOOP = 1 # inner loop in meta-train
 _C.META.SOLVER.MTRAIN.SHUFFLE_DOMAIN = True # True->shuffle domain when outerloop
-_C.META.SOLVER.MTRAIN.SECOND_ORDER = True # second order
+_C.META.SOLVER.MTRAIN.SECOND_ORDER = False # second order
 _C.META.SOLVER.MTRAIN.NUM_DOMAIN = 3
 _C.META.SOLVER.MTRAIN.FREEZE_GRAD_META = False # freeze gradient_requires w/o update and conpute parameters
 _C.META.SOLVER.MTRAIN.ALLOW_UNUSED = False # False-> MLDG, True->MAML
 _C.META.SOLVER.MTRAIN.BEFORE_ZERO_GRAD = True # False-> MLDG, True->MAML
-_C.META.SOLVER.MTRAIN.TYPE_RUNNING_STATS = "general" # "general", "hold", "eval"
+_C.META.SOLVER.MTRAIN.TYPE_RUNNING_STATS = "hold" # "general", "hold", "eval"
 
 _C.META.SOLVER.MTEST = CN()
 _C.META.SOLVER.MTEST.ONLY_ONE_DOMAIN = False # True-> only use one domain in meta-test
-_C.META.SOLVER.MTEST.TYPE_RUNNING_STATS = "general" # "general", "hold", "eval"
+_C.META.SOLVER.MTEST.TYPE_RUNNING_STATS = "hold" # "general", "hold", "eval"
 
 _C.META.SOLVER.SYNC = True # True-> sync
 _C.META.SOLVER.DETAIL_MODE = True # True-> print detail info
@@ -105,7 +109,7 @@ _C.META.SOLVER.ONE_LOSS_FOR_ITER = False
 _C.META.SOLVER.ONE_LOSS_ORDER = 'forward' # forward, backward, rand
 _C.META.SOLVER.MANUAL_SEED_FLAG = True
 _C.META.SOLVER.MANUAL_SEED_DETERMINISTIC = True
-_C.META.SOLVER.MANUAL_SEED_NUMBER = 2021
+_C.META.SOLVER.MANUAL_SEED_NUMBER = 2020
 
 _C.META.NEW_SOLVER = CN()
 _C.META.NEW_SOLVER.MAIN_ZERO_GRAD = True # optimizer_main.zero_grad() after init
@@ -137,7 +141,6 @@ _C.MODEL.BACKBONE.NAME = "build_mobilenet_v2_backbone"
 _C.MODEL.BACKBONE.DEPTH = 14
 # RegNet volume
 _C.MODEL.BACKBONE.VOLUME = "800y"
-_C.MODEL.BACKBONE.LAST_STRIDE = 1
 # Mini-batch split of Ghost BN
 _C.MODEL.BACKBONE.NORM_SPLIT = 1
 # If use IBN block in backbone
@@ -151,6 +154,7 @@ _C.MODEL.BACKBONE.PRETRAIN = True
 # Pretrain model path
 _C.MODEL.BACKBONE.PRETRAIN_PATH = 'pretrained/mobilenetv2_1.4.pth'
 _C.MODEL.BACKBONE.NUM_BATCH_TRACKED = False
+_C.MODEL.BACKBONE.LAST_STRIDE = 1
 
 
 
@@ -212,7 +216,7 @@ _C.MODEL.LOSSES.TRI_MTRAIN = CN()
 _C.MODEL.LOSSES.TRI_MTRAIN.MARGIN = 0.3
 _C.MODEL.LOSSES.TRI_MTRAIN.FEAT_ORDER = 'before'
 _C.MODEL.LOSSES.TRI_MTRAIN.NORM_FEAT = False
-_C.MODEL.LOSSES.TRI_MTRAIN.HARD_MINING = False
+_C.MODEL.LOSSES.TRI_MTRAIN.HARD_MINING = True
 _C.MODEL.LOSSES.TRI_MTRAIN.SCALE = 1.0
 _C.MODEL.LOSSES.TRI_MTRAIN.NEW_POS = [1,0,0]
 _C.MODEL.LOSSES.TRI_MTRAIN.NEW_NEG = [0,1,1]
@@ -252,7 +256,7 @@ _C.MODEL.LOSSES.STD.SCALE = 1.0
 
 _C.MODEL.LOSSES.SCT = CN()
 _C.MODEL.LOSSES.SCT.NORM = True
-_C.MODEL.LOSSES.SCT.FEAT_ORDER = 'after'
+_C.MODEL.LOSSES.SCT.FEAT_ORDER = 'before'
 _C.MODEL.LOSSES.SCT.TYPE = 'cosine_sim' # 'cosine', 'euclidean'
 _C.MODEL.LOSSES.SCT.SCALE = 1.0
 
@@ -308,7 +312,7 @@ _C.MODEL.NORM.EACH_DOMAIN_MTEST = False
 
 
 
-_C.MODEL.NORM.TYPE_BACKBONE = "BIN_gate2"
+_C.MODEL.NORM.TYPE_BACKBONE = "BIN_gate2"  # "BN", "IN", "BIN_half", "BIN_gate1" (original), "BIN_gate2" (MetaBIN)
 _C.MODEL.NORM.TYPE_BOTTLENECK = "BN"
 _C.MODEL.NORM.TYPE_CLASSIFIER = "BN"
 
@@ -342,7 +346,7 @@ _C.INPUT.PADDING = 10
 # Random color jitter
 _C.INPUT.CJ = CN()
 _C.INPUT.CJ.ENABLED = False
-_C.INPUT.CJ.PROB = 0.8
+_C.INPUT.CJ.PROB = 1.0
 _C.INPUT.CJ.BRIGHTNESS = 0.15
 _C.INPUT.CJ.CONTRAST = 0.15
 _C.INPUT.CJ.SATURATION = 0.1
@@ -405,7 +409,7 @@ _C.SOLVER.OPT_NORM = "SGD"
 _C.SOLVER.CYCLIC_PERIOD_PER_EPOCH = 1.0
 _C.SOLVER.CYCLIC_MIN_LR = 0.0001
 _C.SOLVER.CYCLIC_MAX_LR = 0.01
-_C.SOLVER.MAX_ITER = 70
+_C.SOLVER.MAX_ITER = 100
 
 _C.SOLVER.BASE_LR = 0.01
 _C.SOLVER.BIAS_LR_FACTOR = 2.
@@ -423,7 +427,7 @@ _C.SOLVER.WEIGHT_DECAY_NORM = 0.0
 # Multi-step learning rate options
 _C.SOLVER.SCHED = "WarmupMultiStepLR"
 _C.SOLVER.GAMMA = 0.1
-_C.SOLVER.STEPS = [30, 50]
+_C.SOLVER.STEPS = [40, 70]
 
 # Cosine annealing learning rate options
 _C.SOLVER.DELAY_ITERS = 0

@@ -1,7 +1,7 @@
 # MetaBIN
 
 `git clone our_repository`
-- If you can't clone our repository, you can download it in this [[link](https://drive.google.com/u/0/uc?id=1Z7n_AE-MB4RZjXAaLxFeNbensGjOY2-J&export=download)]
+- If you can't clone our repository, you can download it in this [[link]()]
 
 ## 1) Prerequisites
 
@@ -26,6 +26,7 @@ pip install yacs
 pip install termcolor
 pip install tabulate
 pip install scikit-learn
+
 pip install h5py
 pip install imageio
 pip install openpyxl 
@@ -36,9 +37,9 @@ pip install seaborn
 
 ## 3) Test only
   
-- Download our model [[link](https://drive.google.com/u/0/uc?id=1loGf1Udrp7t2Gn_Hi5l_SPuuHu7vg03C&export=download)] to `MetaBIN/logs/Sample/mobilenet`
+- Download our model [[link](https://drive.google.com/u/0/uc?id=1hg4cYTFg5fZKqXIdUWOiO3P1xoSJtG3M&export=download)] to `MetaBIN/logs/Sample/DG-mobilenet`
 ```
-├── MetaBIN/logs/Sample/mobilenet
+├── MetaBIN/logs/Sample/DG-mobilenet
 │   ├── last_checkpoint
 │   ├── model_0099999.pth
 │   ├── result.png
@@ -71,6 +72,8 @@ pip install seaborn
 | ALL_iLIDS_std             | 4.40%    | 2.47%    | 2.26%     | 2.80%  | 2.80%  | 0.00%            | 0.00%           | 15.77%         |
 | ** all_average **         | 64.69%   | 81.44%   | 86.86%    | 72.34% | 72.34% | 0.00%            | 0.00%           | 61.11%         |
 
+
+- Other models [[link](https://drive.google.com/u/0/uc?id=1-PcLQyNJSiL4h7gYvHNk2bpJN4PkT92R&export=download)]
 
 ---
 
@@ -148,27 +151,27 @@ MetaBIN/
 - If you run code in pycharm
   - tools/train_net.py -> Edit congifuration
   - Working directory: `your folders/MetaBIN/`
-  - Parameters: `--config-file ./configs/Sample/mobilenet.yml`
+  - Parameters: `--config-file ./configs/Sample/DG-mobilenet.yml`
 
 - Single GPU
 
-`python3 ./tools/train_net.py --config-file ./configs/Sample/mobilenet.yml`
+`python3 ./tools/train_net.py --config-file ./configs/Sample/DG-mobilenet.yml`
 
 - Single GPU (specific GPU)
 
-`python3 ./tools/train_net.py --config-file ./configs/Sample/mobilenet.yml MODEL.DEVICE "cuda:0"`
+`python3 ./tools/train_net.py --config-file ./configs/Sample/DG-mobilenet.yml MODEL.DEVICE "cuda:0"`
 
 - Multiple GPUs
 
-`python3 ./tools/train_net.py --config-file ./configs/Sample/mobilenet.yml --num-gpus 2`
+`python3 ./tools/train_net.py --config-file ./configs/Sample/DG-mobilenet.yml --num-gpus 2`
 
 - Resume (model weights is automatically loaded based on `last_checkpoint` file in logs)
 
-`python3 ./tools/train_net.py --config-file ./configs/Sample/mobilenet.yml --resume`
+`python3 ./tools/train_net.py --config-file ./configs/Sample/DG-mobilenet.yml --resume`
 
 - Evaluation only
 
-`python3 ./tools/train_net.py --config-file ./configs/Sample/mobilenet.yml --eval-only`
+`python3 ./tools/train_net.py --config-file ./configs/Sample/DG-mobilenet.yml --eval-only`
 
 
 ## 8) Datasets
@@ -325,11 +328,16 @@ MetaBIN/
 
 - AMP
   - If the version of your GPU driver is old, you cannot use AMP(automatic mixed precision).
-  - If so, modify the AMP option to False in `/MetaBIN/configs/Sample/mobilenet.yml` 
+  - If so, modify the AMP option to False in `/MetaBIN/configs/Sample/DG-mobilenet.yml` 
   - The memory usage will increase.
 - Fastreid evaluation
   - If a compile error occurs in fastreid, run the following command.
   - `cd fastreid/evaluation/rank_cylib; make all`
-- Please check `logs`
-- Please check `pretrained` 
-- Please check `datasets` 
+- No such file or directory 'logs/Sample'
+  - Please check `logs` (section 3)
+- No such file or directory 'pretrained'
+  - Please check `pretrained` (section 6)
+- No such file or directory 'datasets'
+  - Please check `datasets` (section 8)
+
+
