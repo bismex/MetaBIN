@@ -1,3 +1,13 @@
+**Feel free to visit my [homepage](https://sites.google.com/site/seokeonchoi/) and [awesome person re-id github page](https://github.com/bismex/Awesome-person-re-identification)**
+
+---
+
+
+# Meta Batch-Instance Normalization for Generalizable Person Re-Identification [CVPR2021 paper]
+
+---
+
+
 # MetaBIN
 
 `git clone our_repository`
@@ -340,4 +350,17 @@ MetaBIN/
 - No such file or directory 'datasets'
   - Please check `datasets` (section 8)
 
+
+
+
+## Citation
+```
+@InProceedings{choi2021metabin,
+title = {Hi-CMD: Hierarchical Cross-Modality Disentanglement for Visible-Infrared Person Re-Identification},
+author = {Choi, Seokeon and Kim, Taekyung and Jeong, Minki and Park, Hyoungseob and Kim, Changick},
+booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+month = {June},
+year = {2021}
+}
+```
 
