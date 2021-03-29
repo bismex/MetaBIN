@@ -3,7 +3,7 @@
 ---
 
 
-# Meta Batch-Instance Normalization for Generalizable Person Re-Identification [CVPR2021 paper]
+## Meta Batch-Instance Normalization for Generalizable Person Re-Identification [CVPR2021 paper]
 
 ---
 
