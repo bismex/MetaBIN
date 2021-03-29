@@ -3,7 +3,7 @@
 ---
 
 
-## Meta Batch-Instance Normalization for Generalizable Person Re-Identification (MetaBIN), CVPR 2021
+## Meta Batch-Instance Normalization for Generalizable Person Re-Identification (MetaBIN), [[CVPR 2021](https://arxiv.org/abs/2011.14670)]
 
 
 ---
