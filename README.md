@@ -8,9 +8,13 @@
 
 ---
 
-<**Illustration of our Hierarchical Cross-Modality Disentanglement (Hi-CMD) concept**>
+<**Illustration of unsuccessful generalization scenarios and our framework**>
 
-<img src='concept.PNG' width='650'>
+<img src='concept.png' width='650'>
+
+- (a) ***Under-style-normalization*** happens when the trained BN model fails to distinguish identities on unseen domains.
+- (b) ***Over-style-normalization*** happens when the trained IN model removes even ID-discriminative information.
+- (c) Our key idea is to generalize BIN layers by simulating the preceding cases in a meta-learning pipeline. By overcoming the harsh situations, our model learns to avoid overfitting to source styles.
 
 ---
 
