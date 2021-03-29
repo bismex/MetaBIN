@@ -356,7 +356,7 @@ MetaBIN/
 ## Citation
 ```
 @InProceedings{choi2021metabin,
-title = {Hi-CMD: Hierarchical Cross-Modality Disentanglement for Visible-Infrared Person Re-Identification},
+title = {Meta Batch-Instance Normalization for Generalizable Person Re-Identification},
 author = {Choi, Seokeon and Kim, Taekyung and Jeong, Minki and Park, Hyoungseob and Kim, Changick},
 booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
 month = {June},
