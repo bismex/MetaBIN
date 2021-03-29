@@ -8,6 +8,12 @@
 
 ---
 
+<**Illustration of our Hierarchical Cross-Modality Disentanglement (Hi-CMD) concept**>
+
+<img src='concept.PNG' width='650'>
+
+---
+
 
 # MetaBIN
 
