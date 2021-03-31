@@ -248,7 +248,7 @@ MetaBIN/
 - (5) Person Search (CUHK-SYSU)
   - Create a directory called `CUHK-SYSU`
   - Download `CUHK-SYSU` from [link](https://github.com/ShuangLI59/person_search) and extract the files.
-  - Cropped images can be created by my matlab code `make_cropped_image.m`
+  - Cropped images can be created by my matlab code `make_cropped_image.m` (this code is included in the datasets folder)
   - The data structure should look like
   ```
   CUHK-SYSU/
@@ -292,7 +292,7 @@ MetaBIN/
   - https://github.com/BJTUJia/person_reID_DualNorm
   - Create a directory called `QMUL_iLIDS`
   - Download `QMUL_iLIDS` from the upper links
-  - Split sets () can be created by python code `iLIDS.py`
+  - Split sets can be created by python code `iLIDS.py`
   - The data structure should look like
 
   ```
@@ -304,7 +304,7 @@ MetaBIN/
 - (9) VIPer
   - Create a directory called `viper`
   - Download `viper` from [link](https://users.soe.ucsc.edu/~manduchi/VIPeR.v1.0.zip) and extract the files.
-  - Split sets can be created by my matlab code `make_split.m`
+  - Split sets can be created by my matlab code `make_split.m` (this code is included in the datasets folder)
   - The data structure should look like
   ```
   viper/
