@@ -18,7 +18,6 @@
 
 ---
 
-
 # MetaBIN
 
 `git clone our_repository`
@@ -180,10 +179,6 @@ MetaBIN/
 - Single GPU (specific GPU)
 
 `python3 ./tools/train_net.py --config-file ./configs/Sample/DG-mobilenet.yml MODEL.DEVICE "cuda:0"`
-
-- Multiple GPUs
-
-`python3 ./tools/train_net.py --config-file ./configs/Sample/DG-mobilenet.yml --num-gpus 2`
 
 - Resume (model weights is automatically loaded based on `last_checkpoint` file in logs)
 
