@@ -38,7 +38,7 @@
 ```
 conda create -n MetaBIN python=3.6
 conda activate MetaBIN
-conda install pytorch torchvision cudatoolkit=10.1 -c pytorch 
+conda install pytorch==1.7.0 torchvision==0.8.0 torchaudio==0.7.0 cudatoolkit=10.1 -c pytorch
 pip install tensorboard
 pip install Cython
 pip install yacs
