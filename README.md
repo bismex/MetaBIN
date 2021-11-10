@@ -354,6 +354,8 @@ MetaBIN/
   - Please check `pretrained` (section 6)
 - No such file or directory 'datasets'
   - Please check `datasets` (section 8)
+- RuntimeError: cuDNN error: CUDNN_STATUS_EXECUTION_FAILED
+  - Please check the CUDA version on your graphics card and pytorch.
 
 
 
